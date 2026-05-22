@@ -7,7 +7,8 @@ const STORAGE_KEY = "freitas-brandao-hospedes";
 const DRAFT_KEY = "freitas-brandao-rascunho";
 
 const emptyGuest = {
-  id: "",
+  id: null,
+  localId: "",
   protocolo: "",
   dataAcolhimento: "",
   dataRetorno: "",
@@ -37,15 +38,15 @@ const emptyGuest = {
   recebeCadUnico: false,
   numeroNis: "",
   outrosBeneficios: "",
-  problemaSaude: "nao",
+  problemaSaude: false,
   problemaSaudeQual: "",
-  alergia: "nao",
+  alergia: false,
   alergiaQual: "",
-  medicamentoControlado: "nao",
+  medicamentoControlado: false,
   medicamentoQual: "",
-  usaSpa: "nao",
+  usaSpa: false,
   usaSpaQual: "",
-  outraAlergia: "nao",
+  outraAlergia: false,
   outraAlergiaQual: "",
   cartaoSus: "",
   atividadeProfissional: "",
@@ -118,16 +119,16 @@ function Field({ label, children, full = false }) {
   );
 }
 
-function RadioGroup({ label, name, value, onChange }) {
+function RadioGroup({ label, name, value, onChange, trueValue = true, falseValue = false }) {
   return (
     <fieldset className="radio-group">
       <legend>{label}</legend>
       <label>
-        <input type="radio" name={name} value="sim" checked={value === "sim"} onChange={onChange} />
+        <input type="radio" name={name} value={String(trueValue)} checked={value === trueValue} onChange={onChange} />
         Sim
       </label>
       <label>
-        <input type="radio" name={name} value="nao" checked={value === "nao"} onChange={onChange} />
+        <input type="radio" name={name} value={String(falseValue)} checked={value === falseValue} onChange={onChange} />
         Não
       </label>
     </fieldset>
@@ -180,17 +181,65 @@ function App() {
     return {
       ...emptyGuest,
       ...value,
+      id: normalizeBackendId(value?.id),
+      localId: value?.localId || crypto.randomUUID(),
+      demandaEspontanea: normalizeYesNo(value?.demandaEspontanea, "sim"),
+      problemaSaude: normalizeBoolean(value?.problemaSaude, false),
+      alergia: normalizeBoolean(value?.alergia, false),
+      medicamentoControlado: normalizeBoolean(value?.medicamentoControlado, false),
+      usaSpa: normalizeBoolean(value?.usaSpa, false),
+      outraAlergia: normalizeBoolean(value?.outraAlergia, false),
       desligamentos: value?.desligamentos?.length ? renumberDischarges(value.desligamentos) : [createDischarge(1)],
       evolucoes: value?.evolucoes || [],
       encaminhamentos: value?.encaminhamentos || []
     };
   }
 
+  function normalizeBackendId(id) {
+    if (typeof id === "number") {
+      return id;
+    }
+
+    if (typeof id === "string" && /^\d+$/.test(id)) {
+      return Number(id);
+    }
+
+    return null;
+  }
+
+  function normalizeBoolean(value, fallback) {
+    if (typeof value === "boolean") {
+      return value;
+    }
+
+    if (value === "sim" || value === "true") {
+      return true;
+    }
+
+    if (value === "nao" || value === "false") {
+      return false;
+    }
+
+    return fallback;
+  }
+
+  function normalizeYesNo(value, fallback) {
+    if (value === true || value === "true" || value === "sim") {
+      return "sim";
+    }
+
+    if (value === false || value === "false" || value === "nao") {
+      return "nao";
+    }
+
+    return fallback;
+  }
+
   function updateField(event) {
     const { name, value, type, checked } = event.target;
     setGuest((current) => ({
       ...current,
-      [name]: type === "checkbox" ? checked : value
+      [name]: type === "checkbox" ? checked : value === "true" ? true : value === "false" ? false : value
     }));
   }
 
@@ -241,7 +290,8 @@ function App() {
   function saveLocal() {
     const record = {
       ...guest,
-      id: guest.id || crypto.randomUUID(),
+      id: normalizeBackendId(guest.id),
+      localId: guest.localId || crypto.randomUUID(),
       protocolo: guest.protocolo || `FB-${new Date().getFullYear()}-${String(records.length + 1).padStart(3, "0")}`
     };
 
@@ -251,20 +301,22 @@ function App() {
   function persistRecord(record) {
     setGuest(record);
     setRecords((current) => {
-      const exists = current.some((item) => item.id === record.id);
-      return exists ? current.map((item) => (item.id === record.id ? record : item)) : [record, ...current];
+      const recordKey = getRecordKey(record);
+      const exists = current.some((item) => getRecordKey(item) === recordKey);
+      return exists ? current.map((item) => (getRecordKey(item) === recordKey ? record : item)) : [record, ...current];
     });
-    setSelectedId(record.id);
+    setSelectedId(getRecordKey(record));
     setStatus("Salvo no navegador");
   }
 
   async function submitToApi() {
-    const payload = { ...guest, origem: "frontend-casa-passagem" };
+    const hasBackendId = Number.isInteger(normalizeBackendId(guest.id));
+    const payload = sanitizePayload(guest);
     setApiStatus("Enviando...");
 
     try {
       const response = await fetch(`${API_URL}/hospedes`, {
-        method: guest.id ? "PUT" : "POST",
+        method: hasBackendId ? "PUT" : "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(payload)
       });
@@ -273,7 +325,7 @@ function App() {
         throw new Error(`HTTP ${response.status}`);
       }
 
-      const saved = normalizeGuest(await response.json());
+      const saved = normalizeGuest({ ...(await response.json()), localId: guest.localId });
       setApiStatus("Enviado para o back");
       persistRecord(saved);
     } catch (error) {
@@ -284,13 +336,13 @@ function App() {
 
   function loadRecord(record) {
     setGuest(normalizeGuest(record));
-    setSelectedId(record.id);
+    setSelectedId(getRecordKey(record));
     setStatus("Registro carregado");
     setCurrentSection("inicio");
   }
 
   function newRecord() {
-    const blank = { ...emptyGuest, desligamentos: [createDischarge(1)] };
+    const blank = { ...emptyGuest, localId: crypto.randomUUID(), desligamentos: [createDischarge(1)] };
     setGuest(blank);
     setSelectedId("");
     setStatus("Novo rascunho");
@@ -298,10 +350,41 @@ function App() {
   }
 
   function deleteRecord(id) {
-    setRecords((current) => current.filter((item) => item.id !== id));
+    setRecords((current) => current.filter((item) => getRecordKey(item) !== id));
     if (selectedId === id) {
       newRecord();
     }
+  }
+
+  function getRecordKey(record) {
+    return String(record.localId || record.id);
+  }
+
+  function sanitizePayload(value) {
+    const payload = {
+      ...value,
+      id: normalizeBackendId(value.id),
+      idade: value.idade === "" ? null : Number(value.idade),
+      demandaEspontanea: normalizeYesNo(value.demandaEspontanea, "sim"),
+      evolucoes: value.evolucoes.map((item) => ({
+        data: item.data,
+        descricao: item.texto,
+        responsavel: item.tecnico
+      })),
+      encaminhamentos: value.encaminhamentos.map((item) => ({
+        data: item.mes,
+        destino: item.encaminhamento,
+        observacoes: ""
+      }))
+    };
+
+    delete payload.localId;
+
+    if (!payload.id) {
+      delete payload.id;
+    }
+
+    return payload;
   }
 
   function nextSection() {
@@ -363,12 +446,12 @@ function App() {
             <div className="records-list">
               {records.length === 0 && <p className="muted">Nenhum hóspede salvo ainda.</p>}
               {records.map((record) => (
-                <article key={record.id} className={record.id === selectedId ? "record-card selected" : "record-card"}>
+                <article key={getRecordKey(record)} className={getRecordKey(record) === selectedId ? "record-card selected" : "record-card"}>
                   <button type="button" onClick={() => loadRecord(record)}>
                     <strong>{record.nome || "Sem nome"}</strong>
                     <span>{record.protocolo || "Sem protocolo"}</span>
                   </button>
-                  <button className="danger-button" type="button" onClick={() => deleteRecord(record.id)}>
+                  <button className="danger-button" type="button" onClick={() => deleteRecord(getRecordKey(record))}>
                     Excluir
                   </button>
                 </article>
@@ -430,6 +513,8 @@ function App() {
                 name="demandaEspontanea"
                 value={guest.demandaEspontanea}
                 onChange={updateField}
+                trueValue="sim"
+                falseValue="nao"
               />
               <Field label="Motivo da entrada" full>
                 <textarea name="motivoEntrada" rows="4" value={guest.motivoEntrada} onChange={updateField} />
@@ -662,7 +747,7 @@ function App() {
               <ReviewItem label="Nome" value={guest.nome} />
               <ReviewItem label="CPF" value={guest.cpf} />
               <ReviewItem label="Data de acolhimento" value={guest.dataAcolhimento} />
-              <ReviewItem label="Demanda espontânea" value={guest.demandaEspontanea} />
+              <ReviewItem label="Demanda espontânea" value={guest.demandaEspontanea === "sim" ? "Sim" : "Não"} />
               <ReviewItem label="Benefícios marcados" value={[guest.recebeBolsaFamilia && "Bolsa Família", guest.recebeBpc && "BPC", guest.recebeAposentadoria && "Aposentadoria", guest.recebeCadUnico && "CadÚnico"].filter(Boolean).join(", ")} />
               <ReviewItem label="Cartão SUS" value={guest.cartaoSus} />
               <ReviewItem label="Evoluções" value={`${guest.evolucoes.length} registro(s)`} />
