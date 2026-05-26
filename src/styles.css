@@ -1,5 +1,5 @@
 :root {
-  font-family: "Segoe UI", Arial, sans-serif;
+  font-family: "Inter", "Segoe UI", Arial, sans-serif;
   color: #1f2f3a;
   color-scheme: light;
   line-height: 1.5;
@@ -125,9 +125,10 @@ select:focus {
 .header-title h1 {
   margin: 4px 0 10px;
   color: var(--blue-dark);
+  font-family: "Outfit", sans-serif;
   font-size: clamp(1.9rem, 3vw, 3.2rem);
   line-height: 1.05;
-  letter-spacing: 0;
+  letter-spacing: -0.02em;
 }
 
 .header-title p {
@@ -392,9 +393,10 @@ select:focus {
 .section-title h2 {
   margin: 0;
   color: var(--blue-dark);
+  font-family: "Outfit", sans-serif;
   font-size: clamp(1.45rem, 2vw, 2rem);
   line-height: 1.15;
-  letter-spacing: 0;
+  letter-spacing: -0.01em;
 }
 
 .section-title.compact h2,
@@ -1033,3 +1035,192 @@ button:focus-visible {
     display: block;
   }
 }
+
+/* --- NOVOS ESTILOS: BUSCA, MODAL, TOASTS, LOADING E UTILITÁRIOS --- */
+
+/* Painel de Utilitários (Sync / Backup) */
+.utility-buttons {
+  display: grid;
+  gap: 10px;
+  margin-bottom: 18px;
+  padding-bottom: 18px;
+  border-bottom: 1px dashed rgba(106, 132, 153, 0.3);
+}
+
+.backup-actions {
+  display: flex;
+  gap: 10px;
+}
+
+.backup-actions button {
+  flex: 1;
+}
+
+/* Barra de Pesquisa */
+.search-container {
+  position: relative;
+  margin-bottom: 14px;
+}
+
+.search-input {
+  padding-left: 38px;
+  font-size: 0.9rem;
+  border-radius: 12px;
+  border: 1px solid rgba(106, 132, 153, 0.22);
+  background-color: #ffffff;
+}
+
+.search-icon {
+  position: absolute;
+  left: 14px;
+  top: 50%;
+  transform: translateY(-50%);
+  color: var(--muted);
+  pointer-events: none;
+  font-weight: bold;
+}
+
+/* Modal de Confirmação */
+.modal-overlay {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background: rgba(31, 47, 58, 0.45);
+  backdrop-filter: blur(4px);
+  display: grid;
+  place-items: center;
+  z-index: 2000;
+  animation: fadeIn 180ms ease-out;
+}
+
+.modal-container {
+  background: var(--surface);
+  border-radius: 20px;
+  width: min(440px, calc(100% - 32px));
+  padding: 26px;
+  box-shadow: 0 24px 54px rgba(23, 49, 67, 0.25);
+  border: 1px solid rgba(255, 255, 255, 0.55);
+  animation: scaleUp 220ms cubic-bezier(0.34, 1.56, 0.64, 1);
+}
+
+.modal-title {
+  margin-top: 0;
+  margin-bottom: 10px;
+  color: var(--blue-dark);
+  font-family: 'Outfit', sans-serif;
+  font-size: 1.25rem;
+  font-weight: 700;
+}
+
+.modal-body {
+  color: var(--ink);
+  margin-bottom: 22px;
+  font-size: 0.95rem;
+  line-height: 1.5;
+  opacity: 0.85;
+}
+
+.modal-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 12px;
+}
+
+@keyframes fadeIn {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+@keyframes scaleUp {
+  from { transform: scale(0.95); opacity: 0; }
+  to { transform: scale(1); opacity: 1; }
+}
+
+/* Notificações Flutuantes (Toasts) */
+.toast-container {
+  position: fixed;
+  top: 24px;
+  right: 24px;
+  display: grid;
+  gap: 10px;
+  z-index: 2100;
+  pointer-events: none;
+}
+
+.toast {
+  pointer-events: auto;
+  background: var(--surface);
+  border-left: 5px solid var(--blue);
+  border-radius: 14px;
+  padding: 14px 18px;
+  min-width: 300px;
+  max-width: 420px;
+  box-shadow: 0 12px 34px rgba(23, 49, 67, 0.16);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  animation: slideInRight 250ms cubic-bezier(0.34, 1.56, 0.64, 1);
+  transition: all 200ms ease;
+}
+
+.toast.success {
+  border-left-color: var(--green);
+}
+
+.toast.error {
+  border-left-color: var(--danger);
+}
+
+.toast.info {
+  border-left-color: var(--blue);
+}
+
+.toast-content {
+  font-size: 0.9rem;
+  font-weight: 600;
+  color: var(--ink);
+}
+
+.toast-close {
+  background: transparent;
+  border: 0;
+  color: var(--muted);
+  font-size: 1.25rem;
+  cursor: pointer;
+  padding: 0;
+  line-height: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: color 150ms ease;
+}
+
+.toast-close:hover {
+  color: var(--danger);
+}
+
+@keyframes slideInRight {
+  from { transform: translateX(120%); opacity: 0; }
+  to { transform: translateX(0); opacity: 1; }
+}
+
+/* Spinner de Carregamento */
+.spinner {
+  display: inline-block;
+  width: 18px;
+  height: 18px;
+  border: 2.5px solid rgba(255, 255, 255, 0.35);
+  border-radius: 50%;
+  border-top-color: #ffffff;
+  animation: spin 0.8s linear infinite;
+  margin-right: 8px;
+  vertical-align: middle;
+}
+
+@keyframes spin {
+  to { transform: rotate(360deg); }
+}
+

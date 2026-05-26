@@ -1,63 +1,8 @@
-import { useEffect, useMemo, useState } from "react";
+import { useMemo, useState, useRef } from "react";
 import prefeituraLogo from "./assets/prefeitura-aracaju.png";
 import assistenciaLogo from "./assets/assistencia-social.jfif";
-
-const API_URL = import.meta.env.VITE_API_URL || "http://localhost:8080/api";
-const STORAGE_KEY = "freitas-brandao-hospedes";
-const DRAFT_KEY = "freitas-brandao-rascunho";
-
-const emptyGuest = {
-  id: null,
-  localId: "",
-  protocolo: "",
-  dataAcolhimento: "",
-  dataRetorno: "",
-  demandaEspontanea: "sim",
-  motivoEntrada: "",
-  instituicaoEncaminhamento: "",
-  nome: "",
-  dataNascimento: "",
-  idade: "",
-  escolaridade: "",
-  nacionalidade: "Brasileira",
-  naturalidade: "",
-  estadoCivil: "",
-  filhos: "",
-  referenciasFamiliares: "",
-  mae: "",
-  pai: "",
-  rg: "",
-  cpf: "",
-  tituloEleitoral: "",
-  carteiraTrabalho: "",
-  certidaoNascimento: "",
-  boletimOcorrencia: "",
-  recebeBolsaFamilia: false,
-  recebeBpc: false,
-  recebeAposentadoria: false,
-  recebeCadUnico: false,
-  numeroNis: "",
-  outrosBeneficios: "",
-  problemaSaude: false,
-  problemaSaudeQual: "",
-  alergia: false,
-  alergiaQual: "",
-  medicamentoControlado: false,
-  medicamentoQual: "",
-  usaSpa: false,
-  usaSpaQual: "",
-  outraAlergia: false,
-  outraAlergiaQual: "",
-  cartaoSus: "",
-  atividadeProfissional: "",
-  enderecoReferencia: "",
-  telefoneContato: "",
-  observacoes: "",
-  aceitouTermo: false,
-  desligamentos: [createDischarge(1)],
-  evolucoes: [],
-  encaminhamentos: []
-};
+import { Field, RadioGroup, SectionHeader, ListToolbar, ReviewItem } from "./components/ui/FormElements";
+import { useGuestData, getRecordKey, createEvolution, createReferral } from "./hooks/useGuestData";
 
 const sections = [
   { id: "inicio", label: "Iniciais" },
@@ -607,6 +552,7 @@ function App() {
     setSelectedId(getRecordKey(record));
     setStatus("Registro carregado");
     setCurrentSection("inicio");
+    setValidationErrors({});
   }
 
   function openGuestDetails(record) {
@@ -635,6 +581,7 @@ function App() {
     setSelectedId("");
     setStatus("Novo rascunho");
     setCurrentSection("inicio");
+    setValidationErrors({});
   }
 
   function requestDeleteRecord(record) {
@@ -1141,7 +1088,7 @@ function App() {
       <main className="workspace">
         <aside className="sidebar">
           <section className="side-panel">
-            <button className="primary-button full-button" type="button" onClick={newRecord}>
+            <button className="primary-button full-button" type="button" onClick={handleNewRecord}>
               Novo hóspede
             </button>
             <div className="progress-track">
@@ -1153,7 +1100,12 @@ function App() {
                   key={section.id}
                   className={`step-item ${section.id === currentSection ? "active" : ""}`}
                   type="button"
-                  onClick={() => setCurrentSection(section.id)}
+                  onClick={() => {
+                    if (validateSection()) {
+                      setCurrentSection(section.id);
+                      setValidationErrors({});
+                    }
+                  }}
                 >
                   <span>{String(index + 1).padStart(2, "0")}</span>
                   {section.label}
@@ -1204,6 +1156,39 @@ function App() {
               </div>
               <strong className="records-count">{hasActiveFilters ? `${filteredRecords.length}/${records.length}` : records.length}</strong>
             </div>
+            
+            <div className="utility-buttons">
+              <button className="ghost-button compact-button full-button" type="button" onClick={syncPending} disabled={loading}>
+                🔄 Sincronizar Todos
+              </button>
+              <div className="backup-actions">
+                <button className="ghost-button compact-button" type="button" onClick={exportData}>
+                  📥 Exportar
+                </button>
+                <button className="ghost-button compact-button" type="button" onClick={() => fileInputRef.current?.click()}>
+                  📤 Importar
+                </button>
+                <input
+                  type="file"
+                  accept=".json"
+                  ref={fileInputRef}
+                  style={{ display: "none" }}
+                  onChange={importData}
+                />
+              </div>
+            </div>
+
+            <div className="search-container">
+              <span className="search-icon">🔍</span>
+              <input
+                type="text"
+                className="search-input"
+                placeholder="Buscar por nome ou CPF..."
+                value={searchTerm}
+                onChange={(e) => setSearchTerm(e.target.value)}
+              />
+            </div>
+            
             <div className="records-list">
               {records.length === 0 && <p className="muted">Nenhum hóspede salvo ainda.</p>}
               {records.length > 0 && filteredRecords.length === 0 && (
@@ -1233,14 +1218,14 @@ function App() {
               Voltar
             </button>
             <div className="actions-right">
-              <button className="ghost-button" type="button" onClick={saveLocal}>
+              <button className="ghost-button" type="button" onClick={saveLocal} disabled={isSubmitting}>
                 Salvar rascunho
               </button>
-              <button className="ghost-button" type="button" onClick={() => window.print()}>
+              <button className="ghost-button" type="button" onClick={() => window.print()} disabled={isSubmitting}>
                 Imprimir ficha
               </button>
               {selectedIndex < sections.length - 1 ? (
-                <button className="primary-button" type="button" onClick={nextSection}>
+                <button className="primary-button" type="button" onClick={nextSection} disabled={isSubmitting}>
                   Avançar
                 </button>
               ) : (
@@ -1283,8 +1268,8 @@ function App() {
                 trueValue="sim"
                 falseValue="nao"
               />
-              <Field label="Motivo da entrada" full>
-                <textarea name="motivoEntrada" rows="4" value={guest.motivoEntrada} onChange={updateField} />
+              <Field label="Motivo da entrada" full error={errors.motivoEntrada}>
+                <textarea className={errors.motivoEntrada ? "input-error" : ""} name="motivoEntrada" rows="4" value={guest.motivoEntrada} onChange={updateField} />
               </Field>
             </div>
           </>
