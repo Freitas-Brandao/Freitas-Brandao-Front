@@ -110,11 +110,12 @@ function createReferral() {
   };
 }
 
-function Field({ label, children, full = false }) {
+function Field({ label, children, full = false, error }) {
   return (
     <label className={`field ${full ? "field-full" : ""}`}>
       <span>{label}</span>
       {children}
+      {error && <small className="field-error">{error}</small>}
     </label>
   );
 }
@@ -142,6 +143,25 @@ function App() {
   const [selectedId, setSelectedId] = useState("");
   const [status, setStatus] = useState("Rascunho local");
   const [apiStatus, setApiStatus] = useState("Aguardando envio");
+  const [errors, setErrors] = useState({});
+  const [isSubmitting, setIsSubmitting] = useState(false);
+  const [filters, setFilters] = useState({ nome: "", cpf: "", protocolo: "", dataAcolhimento: "" });
+
+  const filteredRecords = useMemo(() => {
+    return records.filter((record) => {
+      const searchNome = filters.nome.trim().toLowerCase();
+      const searchCpf = filters.cpf.replace(/\D/g, "");
+      const searchProtocolo = filters.protocolo.trim().toLowerCase();
+      const searchData = filters.dataAcolhimento;
+
+      const matchesNome = !searchNome || String(record.nome || "").toLowerCase().includes(searchNome);
+      const matchesCpf = !searchCpf || String(record.cpf || "").replace(/\D/g, "").includes(searchCpf);
+      const matchesProtocolo = !searchProtocolo || String(record.protocolo || "").toLowerCase().includes(searchProtocolo);
+      const matchesData = !searchData || String(record.dataAcolhimento || "").includes(searchData);
+
+      return matchesNome && matchesCpf && matchesProtocolo && matchesData;
+    });
+  }, [filters, records]);
 
   useEffect(() => {
     localStorage.setItem(DRAFT_KEY, JSON.stringify(guest));
@@ -243,6 +263,56 @@ function App() {
     }));
   }
 
+  function updateFilter(event) {
+    const { name, value } = event.target;
+    setFilters((current) => ({ ...current, [name]: value }));
+  }
+
+  function isValidCpf(value) {
+    const digits = String(value).replace(/\D/g, "");
+    if (!/^\d{11}$/.test(digits) || /^([0-9])\1{10}$/.test(digits)) {
+      return false;
+    }
+
+    const numbers = digits.split("").map(Number);
+    for (let checkIndex = 9; checkIndex <= 10; checkIndex += 1) {
+      let sum = 0;
+      for (let index = 0; index < checkIndex; index += 1) {
+        sum += numbers[index] * (checkIndex + 1 - index);
+      }
+      const expected = ((sum * 10) % 11) % 10;
+      if (numbers[checkIndex] !== expected) {
+        return false;
+      }
+    }
+
+    return true;
+  }
+
+  function validateGuest() {
+    const validation = {};
+
+    if (!guest.nome.trim()) {
+      validation.nome = "O nome é obrigatório.";
+    }
+
+    if (!guest.dataAcolhimento) {
+      validation.dataAcolhimento = "A data de acolhimento é obrigatória.";
+    }
+
+    if (!guest.motivoEntrada.trim()) {
+      validation.motivoEntrada = "O motivo de entrada é obrigatório.";
+    }
+
+    if (!guest.cpf.trim()) {
+      validation.cpf = "O CPF é obrigatório.";
+    } else if (!isValidCpf(guest.cpf)) {
+      validation.cpf = "Digite um CPF válido.";
+    }
+
+    return validation;
+  }
+
   function updateDischarge(index, field, value) {
     setGuest((current) => ({
       ...current,
@@ -310,9 +380,28 @@ function App() {
   }
 
   async function submitToApi() {
+    const validation = validateGuest();
+    if (Object.keys(validation).length > 0) {
+      setErrors(validation);
+      setApiStatus("Corrija os erros antes de enviar.");
+      setStatus("Validação falhou");
+      const sectionMap = {
+        nome: "pessoais",
+        cpf: "documentos",
+        dataAcolhimento: "inicio",
+        motivoEntrada: "inicio"
+      };
+      setCurrentSection(sectionMap[Object.keys(validation)[0]] || "inicio");
+      return;
+    }
+
+    setErrors({});
+    setIsSubmitting(true);
+    setStatus("Enviando...");
+    setApiStatus("Enviando...");
+
     const hasBackendId = Number.isInteger(normalizeBackendId(guest.id));
     const payload = sanitizePayload(guest);
-    setApiStatus("Enviando...");
 
     try {
       const response = await fetch(`${API_URL}/hospedes`, {
@@ -331,6 +420,8 @@ function App() {
     } catch (error) {
       setApiStatus("Back indisponível; salvo localmente");
       saveLocal();
+    } finally {
+      setIsSubmitting(false);
     }
   }
 
@@ -438,14 +529,35 @@ function App() {
             </nav>
           </section>
 
+          <section className="side-panel search-panel">
+            <div className="section-title compact">
+              <span>Filtro</span>
+              <strong>Buscar registros</strong>
+            </div>
+            <div className="search-grid">
+              <Field label="Nome">
+                <input name="nome" value={filters.nome} onChange={updateFilter} />
+              </Field>
+              <Field label="CPF">
+                <input name="cpf" value={filters.cpf} onChange={updateFilter} />
+              </Field>
+              <Field label="Protocolo">
+                <input name="protocolo" value={filters.protocolo} onChange={updateFilter} />
+              </Field>
+              <Field label="Data de acolhimento">
+                <input type="date" name="dataAcolhimento" value={filters.dataAcolhimento} onChange={updateFilter} />
+              </Field>
+            </div>
+          </section>
+
           <section className="side-panel records-panel">
             <div className="section-title compact">
               <span>Registros locais</span>
-              <strong>{records.length}</strong>
+              <strong>{filteredRecords.length}/{records.length}</strong>
             </div>
             <div className="records-list">
-              {records.length === 0 && <p className="muted">Nenhum hóspede salvo ainda.</p>}
-              {records.map((record) => (
+              {filteredRecords.length === 0 && <p className="muted">Nenhum hóspede corresponde aos filtros.</p>}
+              {filteredRecords.map((record) => (
                 <article key={getRecordKey(record)} className={getRecordKey(record) === selectedId ? "record-card selected" : "record-card"}>
                   <button type="button" onClick={() => loadRecord(record)}>
                     <strong>{record.nome || "Sem nome"}</strong>
@@ -470,19 +582,19 @@ function App() {
               Voltar
             </button>
             <div className="actions-right">
-              <button className="ghost-button" type="button" onClick={saveLocal}>
+              <button className="ghost-button" type="button" onClick={saveLocal} disabled={isSubmitting}>
                 Salvar rascunho
               </button>
-              <button className="ghost-button" type="button" onClick={() => window.print()}>
+              <button className="ghost-button" type="button" onClick={() => window.print()} disabled={isSubmitting}>
                 Imprimir ficha
               </button>
               {selectedIndex < sections.length - 1 ? (
-                <button className="primary-button" type="button" onClick={nextSection}>
+                <button className="primary-button" type="button" onClick={nextSection} disabled={isSubmitting}>
                   Avançar
                 </button>
               ) : (
-                <button className="primary-button" type="button" onClick={submitToApi}>
-                  Concluir cadastro
+                <button className="primary-button" type="button" onClick={submitToApi} disabled={isSubmitting}>
+                  {isSubmitting ? "Enviando..." : "Concluir cadastro"}
                 </button>
               )}
             </div>
@@ -499,8 +611,8 @@ function App() {
           <>
             <SectionHeader eyebrow="Ficha de acolhimento" title="Informações iniciais" />
             <div className="form-grid">
-              <Field label="Data de acolhimento">
-                <input type="date" name="dataAcolhimento" value={guest.dataAcolhimento} onChange={updateField} />
+              <Field label="Data de acolhimento" error={errors.dataAcolhimento}>
+                <input className={errors.dataAcolhimento ? "input-error" : ""} type="date" name="dataAcolhimento" value={guest.dataAcolhimento} onChange={updateField} />
               </Field>
               <Field label="Data de retorno">
                 <input type="date" name="dataRetorno" value={guest.dataRetorno} onChange={updateField} />
@@ -516,8 +628,8 @@ function App() {
                 trueValue="sim"
                 falseValue="nao"
               />
-              <Field label="Motivo da entrada" full>
-                <textarea name="motivoEntrada" rows="4" value={guest.motivoEntrada} onChange={updateField} />
+              <Field label="Motivo da entrada" full error={errors.motivoEntrada}>
+                <textarea className={errors.motivoEntrada ? "input-error" : ""} name="motivoEntrada" rows="4" value={guest.motivoEntrada} onChange={updateField} />
               </Field>
             </div>
           </>
@@ -527,8 +639,8 @@ function App() {
           <>
             <SectionHeader eyebrow="Identificação" title="Dados pessoais" />
             <div className="form-grid">
-              <Field label="Nome" full>
-                <input name="nome" value={guest.nome} onChange={updateField} />
+              <Field label="Nome" full error={errors.nome}>
+                <input className={errors.nome ? "input-error" : ""} name="nome" value={guest.nome} onChange={updateField} />
               </Field>
               <Field label="Data de nascimento">
                 <input type="date" name="dataNascimento" value={guest.dataNascimento} onChange={updateField} />
@@ -571,8 +683,8 @@ function App() {
               <Field label="RG">
                 <input name="rg" value={guest.rg} onChange={updateField} />
               </Field>
-              <Field label="CPF">
-                <input name="cpf" value={guest.cpf} onChange={updateField} />
+              <Field label="CPF" error={errors.cpf}>
+                <input className={errors.cpf ? "input-error" : ""} name="cpf" value={guest.cpf} onChange={updateField} />
               </Field>
               <Field label="Título eleitoral" full>
                 <input name="tituloEleitoral" value={guest.tituloEleitoral} onChange={updateField} />
