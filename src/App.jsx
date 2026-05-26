@@ -1,63 +1,8 @@
-import { useEffect, useMemo, useState } from "react";
+import { useMemo, useState, useRef } from "react";
 import prefeituraLogo from "./assets/prefeitura-aracaju.png";
 import assistenciaLogo from "./assets/assistencia-social.jfif";
-
-const API_URL = import.meta.env.VITE_API_URL || "http://localhost:8080/api";
-const STORAGE_KEY = "freitas-brandao-hospedes";
-const DRAFT_KEY = "freitas-brandao-rascunho";
-
-const emptyGuest = {
-  id: null,
-  localId: "",
-  protocolo: "",
-  dataAcolhimento: "",
-  dataRetorno: "",
-  demandaEspontanea: "sim",
-  motivoEntrada: "",
-  instituicaoEncaminhamento: "",
-  nome: "",
-  dataNascimento: "",
-  idade: "",
-  escolaridade: "",
-  nacionalidade: "Brasileira",
-  naturalidade: "",
-  estadoCivil: "",
-  filhos: "",
-  referenciasFamiliares: "",
-  mae: "",
-  pai: "",
-  rg: "",
-  cpf: "",
-  tituloEleitoral: "",
-  carteiraTrabalho: "",
-  certidaoNascimento: "",
-  boletimOcorrencia: "",
-  recebeBolsaFamilia: false,
-  recebeBpc: false,
-  recebeAposentadoria: false,
-  recebeCadUnico: false,
-  numeroNis: "",
-  outrosBeneficios: "",
-  problemaSaude: false,
-  problemaSaudeQual: "",
-  alergia: false,
-  alergiaQual: "",
-  medicamentoControlado: false,
-  medicamentoQual: "",
-  usaSpa: false,
-  usaSpaQual: "",
-  outraAlergia: false,
-  outraAlergiaQual: "",
-  cartaoSus: "",
-  atividadeProfissional: "",
-  enderecoReferencia: "",
-  telefoneContato: "",
-  observacoes: "",
-  aceitouTermo: false,
-  desligamentos: [createDischarge(1)],
-  evolucoes: [],
-  encaminhamentos: []
-};
+import { Field, RadioGroup, SectionHeader, ListToolbar, ReviewItem } from "./components/ui/FormElements";
+import { useGuestData, getRecordKey, createEvolution, createReferral } from "./hooks/useGuestData";
 
 const sections = [
   { id: "inicio", label: "Iniciais" },
@@ -70,86 +15,45 @@ const sections = [
   { id: "revisao", label: "Revisão" }
 ];
 
-function createDischarge(number) {
-  return {
-    id: crypto.randomUUID(),
-    numero: number,
-    data: "",
-    motivo: "",
-    devolveuRoupas: false,
-    levouDocumentos: false,
-    temLesoes: false,
-    assinaturaUsuario: "",
-    tecnico: "",
-    dataTecnico: ""
-  };
-}
-
-function renumberDischarges(items) {
-  return items.map((item, index) => ({
-    ...item,
-    id: item.id || crypto.randomUUID(),
-    numero: index + 1
-  }));
-}
-
-function createEvolution() {
-  return {
-    id: crypto.randomUUID(),
-    data: new Date().toISOString().slice(0, 10),
-    texto: "",
-    tecnico: ""
-  };
-}
-
-function createReferral() {
-  return {
-    id: crypto.randomUUID(),
-    mes: "",
-    encaminhamento: ""
-  };
-}
-
-function Field({ label, children, full = false }) {
-  return (
-    <label className={`field ${full ? "field-full" : ""}`}>
-      <span>{label}</span>
-      {children}
-    </label>
-  );
-}
-
-function RadioGroup({ label, name, value, onChange, trueValue = true, falseValue = false }) {
-  return (
-    <fieldset className="radio-group">
-      <legend>{label}</legend>
-      <label>
-        <input type="radio" name={name} value={String(trueValue)} checked={value === trueValue} onChange={onChange} />
-        Sim
-      </label>
-      <label>
-        <input type="radio" name={name} value={String(falseValue)} checked={value === falseValue} onChange={onChange} />
-        Não
-      </label>
-    </fieldset>
-  );
-}
-
 function App() {
   const [currentSection, setCurrentSection] = useState("inicio");
-  const [guest, setGuest] = useState(() => readDraft());
-  const [records, setRecords] = useState(() => readRecords());
-  const [selectedId, setSelectedId] = useState("");
-  const [status, setStatus] = useState("Rascunho local");
-  const [apiStatus, setApiStatus] = useState("Aguardando envio");
+  const [searchTerm, setSearchTerm] = useState("");
+  const [deleteTargetId, setDeleteTargetId] = useState(null);
+  const [toasts, setToasts] = useState([]);
+  const [validationErrors, setValidationErrors] = useState({});
+  const fileInputRef = useRef(null);
 
-  useEffect(() => {
-    localStorage.setItem(DRAFT_KEY, JSON.stringify(guest));
-  }, [guest]);
+  function showToast(message, type = "info") {
+    const id = crypto.randomUUID();
+    setToasts((current) => [...current, { id, message, type }]);
+    setTimeout(() => {
+      setToasts((current) => current.filter((t) => t.id !== id));
+    }, 4000);
+  }
 
-  useEffect(() => {
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(records));
-  }, [records]);
+  const {
+    guest,
+    records,
+    status,
+    apiStatus,
+    loading,
+    selectedId,
+    updateField,
+    updateDischarge,
+    addDischarge,
+    removeDischarge,
+    updateList,
+    addListItem,
+    removeListItem,
+    saveLocal,
+    submitToApi,
+    syncPending,
+    exportData,
+    importData,
+    loadRecord,
+    newRecord,
+    deleteRecord
+  } = useGuestData(showToast);
 
   const selectedIndex = sections.findIndex((section) => section.id === currentSection);
   const progress = Math.round(((selectedIndex + 1) / sections.length) * 100);
@@ -159,240 +63,64 @@ function App() {
     [guest.desligamentos]
   );
 
-  function readDraft() {
-    try {
-      const saved = localStorage.getItem(DRAFT_KEY);
-      return saved ? normalizeGuest(JSON.parse(saved)) : { ...emptyGuest };
-    } catch {
-      return { ...emptyGuest };
-    }
-  }
-
-  function readRecords() {
-    try {
-      const saved = localStorage.getItem(STORAGE_KEY);
-      return saved ? JSON.parse(saved).map(normalizeGuest) : [];
-    } catch {
-      return [];
-    }
-  }
-
-  function normalizeGuest(value) {
-    return {
-      ...emptyGuest,
-      ...value,
-      id: normalizeBackendId(value?.id),
-      localId: value?.localId || crypto.randomUUID(),
-      demandaEspontanea: normalizeYesNo(value?.demandaEspontanea, "sim"),
-      problemaSaude: normalizeBoolean(value?.problemaSaude, false),
-      alergia: normalizeBoolean(value?.alergia, false),
-      medicamentoControlado: normalizeBoolean(value?.medicamentoControlado, false),
-      usaSpa: normalizeBoolean(value?.usaSpa, false),
-      outraAlergia: normalizeBoolean(value?.outraAlergia, false),
-      desligamentos: value?.desligamentos?.length ? renumberDischarges(value.desligamentos) : [createDischarge(1)],
-      evolucoes: value?.evolucoes || [],
-      encaminhamentos: value?.encaminhamentos || []
-    };
-  }
-
-  function normalizeBackendId(id) {
-    if (typeof id === "number") {
-      return id;
-    }
-
-    if (typeof id === "string" && /^\d+$/.test(id)) {
-      return Number(id);
-    }
-
-    return null;
-  }
-
-  function normalizeBoolean(value, fallback) {
-    if (typeof value === "boolean") {
-      return value;
-    }
-
-    if (value === "sim" || value === "true") {
-      return true;
-    }
-
-    if (value === "nao" || value === "false") {
-      return false;
-    }
-
-    return fallback;
-  }
-
-  function normalizeYesNo(value, fallback) {
-    if (value === true || value === "true" || value === "sim") {
-      return "sim";
-    }
-
-    if (value === false || value === "false" || value === "nao") {
-      return "nao";
-    }
-
-    return fallback;
-  }
-
-  function updateField(event) {
-    const { name, value, type, checked } = event.target;
-    setGuest((current) => ({
-      ...current,
-      [name]: type === "checkbox" ? checked : value === "true" ? true : value === "false" ? false : value
-    }));
-  }
-
-  function updateDischarge(index, field, value) {
-    setGuest((current) => ({
-      ...current,
-      desligamentos: current.desligamentos.map((item, itemIndex) =>
-        itemIndex === index ? { ...item, [field]: value } : item
-      )
-    }));
-  }
-
-  function addDischarge() {
-    setGuest((current) => ({
-      ...current,
-      desligamentos: [...current.desligamentos, createDischarge(current.desligamentos.length + 1)]
-    }));
-  }
-
-  function removeDischarge(id) {
-    setGuest((current) => ({
-      ...current,
-      desligamentos: renumberDischarges(current.desligamentos.filter((item) => item.id !== id))
-    }));
-  }
-
-  function updateList(collection, id, field, value) {
-    setGuest((current) => ({
-      ...current,
-      [collection]: current[collection].map((item) => (item.id === id ? { ...item, [field]: value } : item))
-    }));
-  }
-
-  function addListItem(collection, factory) {
-    setGuest((current) => ({
-      ...current,
-      [collection]: [...current[collection], factory()]
-    }));
-  }
-
-  function removeListItem(collection, id) {
-    setGuest((current) => ({
-      ...current,
-      [collection]: current[collection].filter((item) => item.id !== id)
-    }));
-  }
-
-  function saveLocal() {
-    const record = {
-      ...guest,
-      id: normalizeBackendId(guest.id),
-      localId: guest.localId || crypto.randomUUID(),
-      protocolo: guest.protocolo || `FB-${new Date().getFullYear()}-${String(records.length + 1).padStart(3, "0")}`
-    };
-
-    persistRecord(record);
-  }
-
-  function persistRecord(record) {
-    setGuest(record);
-    setRecords((current) => {
-      const recordKey = getRecordKey(record);
-      const exists = current.some((item) => getRecordKey(item) === recordKey);
-      return exists ? current.map((item) => (getRecordKey(item) === recordKey ? record : item)) : [record, ...current];
+  const filteredRecords = useMemo(() => {
+    if (!searchTerm.trim()) return records;
+    const term = searchTerm.toLowerCase();
+    return records.filter((r) => {
+      const nome = (r.nome || "").toLowerCase();
+      const cpf = (r.cpf || "").replace(/\D/g, "");
+      const cleanTerm = term.replace(/\D/g, "");
+      return nome.includes(term) || (cleanTerm && cpf.includes(cleanTerm));
     });
-    setSelectedId(getRecordKey(record));
-    setStatus("Salvo no navegador");
-  }
+  }, [records, searchTerm]);
 
-  async function submitToApi() {
-    const hasBackendId = Number.isInteger(normalizeBackendId(guest.id));
-    const payload = sanitizePayload(guest);
-    setApiStatus("Enviando...");
-
-    try {
-      const response = await fetch(`${API_URL}/hospedes`, {
-        method: hasBackendId ? "PUT" : "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(payload)
-      });
-
-      if (!response.ok) {
-        throw new Error(`HTTP ${response.status}`);
-      }
-
-      const saved = normalizeGuest({ ...(await response.json()), localId: guest.localId });
-      setApiStatus("Enviado para o back");
-      persistRecord(saved);
-    } catch (error) {
-      setApiStatus("Back indisponível; salvo localmente");
-      saveLocal();
+  function validateSection() {
+    const errors = {};
+    
+    if (currentSection === "inicio") {
+      if (!guest.dataAcolhimento) errors.dataAcolhimento = true;
+    } else if (currentSection === "pessoais") {
+      if (!guest.nome || guest.nome.trim() === "") errors.nome = true;
     }
-  }
-
-  function loadRecord(record) {
-    setGuest(normalizeGuest(record));
-    setSelectedId(getRecordKey(record));
-    setStatus("Registro carregado");
-    setCurrentSection("inicio");
-  }
-
-  function newRecord() {
-    const blank = { ...emptyGuest, localId: crypto.randomUUID(), desligamentos: [createDischarge(1)] };
-    setGuest(blank);
-    setSelectedId("");
-    setStatus("Novo rascunho");
-    setCurrentSection("inicio");
-  }
-
-  function deleteRecord(id) {
-    setRecords((current) => current.filter((item) => getRecordKey(item) !== id));
-    if (selectedId === id) {
-      newRecord();
+    
+    setValidationErrors(errors);
+    const hasErrors = Object.keys(errors).length > 0;
+    
+    if (hasErrors) {
+      showToast("Preencha os campos obrigatórios marcados em vermelho.", "error");
     }
-  }
-
-  function getRecordKey(record) {
-    return String(record.localId || record.id);
-  }
-
-  function sanitizePayload(value) {
-    const payload = {
-      ...value,
-      id: normalizeBackendId(value.id),
-      idade: value.idade === "" ? null : Number(value.idade),
-      demandaEspontanea: normalizeYesNo(value.demandaEspontanea, "sim"),
-      evolucoes: value.evolucoes.map((item) => ({
-        data: item.data,
-        descricao: item.texto,
-        responsavel: item.tecnico
-      })),
-      encaminhamentos: value.encaminhamentos.map((item) => ({
-        data: item.mes,
-        destino: item.encaminhamento,
-        observacoes: ""
-      }))
-    };
-
-    delete payload.localId;
-
-    if (!payload.id) {
-      delete payload.id;
-    }
-
-    return payload;
+    
+    return !hasErrors;
   }
 
   function nextSection() {
-    setCurrentSection(sections[Math.min(selectedIndex + 1, sections.length - 1)].id);
+    if (validateSection()) {
+      setCurrentSection(sections[Math.min(selectedIndex + 1, sections.length - 1)].id);
+      setValidationErrors({});
+    }
   }
 
   function previousSection() {
     setCurrentSection(sections[Math.max(selectedIndex - 1, 0)].id);
+    setValidationErrors({});
+  }
+
+  function handleLoadRecord(record) {
+    loadRecord(record);
+    setCurrentSection("inicio");
+    setValidationErrors({});
+  }
+
+  function handleNewRecord() {
+    newRecord();
+    setCurrentSection("inicio");
+    setValidationErrors({});
+  }
+
+  function handleSubmit() {
+    if (validateSection()) {
+      submitToApi();
+    }
   }
 
   return (
@@ -417,7 +145,7 @@ function App() {
       <main className="workspace">
         <aside className="sidebar">
           <section className="side-panel">
-            <button className="primary-button full-button" type="button" onClick={newRecord}>
+            <button className="primary-button full-button" type="button" onClick={handleNewRecord}>
               Novo hóspede
             </button>
             <div className="progress-track">
@@ -429,7 +157,12 @@ function App() {
                   key={section.id}
                   className={`step-item ${section.id === currentSection ? "active" : ""}`}
                   type="button"
-                  onClick={() => setCurrentSection(section.id)}
+                  onClick={() => {
+                    if (validateSection()) {
+                      setCurrentSection(section.id);
+                      setValidationErrors({});
+                    }
+                  }}
                 >
                   <span>{String(index + 1).padStart(2, "0")}</span>
                   {section.label}
@@ -443,15 +176,52 @@ function App() {
               <span>Registros locais</span>
               <strong>{records.length}</strong>
             </div>
+            
+            <div className="utility-buttons">
+              <button className="ghost-button compact-button full-button" type="button" onClick={syncPending} disabled={loading}>
+                🔄 Sincronizar Todos
+              </button>
+              <div className="backup-actions">
+                <button className="ghost-button compact-button" type="button" onClick={exportData}>
+                  📥 Exportar
+                </button>
+                <button className="ghost-button compact-button" type="button" onClick={() => fileInputRef.current?.click()}>
+                  📤 Importar
+                </button>
+                <input
+                  type="file"
+                  accept=".json"
+                  ref={fileInputRef}
+                  style={{ display: "none" }}
+                  onChange={importData}
+                />
+              </div>
+            </div>
+
+            <div className="search-container">
+              <span className="search-icon">🔍</span>
+              <input
+                type="text"
+                className="search-input"
+                placeholder="Buscar por nome ou CPF..."
+                value={searchTerm}
+                onChange={(e) => setSearchTerm(e.target.value)}
+              />
+            </div>
+            
             <div className="records-list">
-              {records.length === 0 && <p className="muted">Nenhum hóspede salvo ainda.</p>}
-              {records.map((record) => (
+              {filteredRecords.length === 0 && (
+                <p className="muted">
+                  {records.length === 0 ? "Nenhum hóspede salvo ainda." : "Nenhum hóspede encontrado."}
+                </p>
+              )}
+              {filteredRecords.map((record) => (
                 <article key={getRecordKey(record)} className={getRecordKey(record) === selectedId ? "record-card selected" : "record-card"}>
-                  <button type="button" onClick={() => loadRecord(record)}>
+                  <button type="button" onClick={() => handleLoadRecord(record)}>
                     <strong>{record.nome || "Sem nome"}</strong>
                     <span>{record.protocolo || "Sem protocolo"}</span>
                   </button>
-                  <button className="danger-button" type="button" onClick={() => deleteRecord(getRecordKey(record))}>
+                  <button className="danger-button" type="button" onClick={() => setDeleteTargetId(getRecordKey(record))}>
                     Excluir
                   </button>
                 </article>
@@ -481,7 +251,8 @@ function App() {
                   Avançar
                 </button>
               ) : (
-                <button className="primary-button" type="button" onClick={submitToApi}>
+                <button className="primary-button" type="button" onClick={handleSubmit} disabled={loading}>
+                  {loading && <span className="spinner" />}
                   Concluir cadastro
                 </button>
               )}
@@ -489,6 +260,49 @@ function App() {
           </footer>
         </section>
       </main>
+
+      {/* Modal de Confirmação de Exclusão */}
+      {deleteTargetId !== null && (
+        <div className="modal-overlay">
+          <div className="modal-container">
+            <h3 className="modal-title">Confirmar Exclusão</h3>
+            <p className="modal-body">
+              Tem certeza que deseja excluir o registro de{" "}
+              <strong>
+                {records.find((r) => getRecordKey(r) === deleteTargetId)?.nome || "Hóspede sem nome"}
+              </strong>? Esta ação não poderá ser desfeita.
+            </p>
+            <div className="modal-actions">
+              <button className="ghost-button compact-button" type="button" onClick={() => setDeleteTargetId(null)}>
+                Cancelar
+              </button>
+              <button
+                className="danger-button compact-button"
+                type="button"
+                onClick={() => {
+                  deleteRecord(deleteTargetId);
+                  setDeleteTargetId(null);
+                  showToast("Hóspede excluído localmente", "info");
+                }}
+              >
+                Confirmar Exclusão
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Recipiente de Notificações (Toasts) */}
+      <div className="toast-container">
+        {toasts.map((t) => (
+          <div key={t.id} className={`toast ${t.type}`}>
+            <span className="toast-content">{t.message}</span>
+            <button className="toast-close" type="button" onClick={() => setToasts((current) => current.filter((x) => x.id !== t.id))}>
+              &times;
+            </button>
+          </div>
+        ))}
+      </div>
     </div>
   );
 
@@ -499,7 +313,7 @@ function App() {
           <>
             <SectionHeader eyebrow="Ficha de acolhimento" title="Informações iniciais" />
             <div className="form-grid">
-              <Field label="Data de acolhimento">
+              <Field label="Data de acolhimento *" hasError={validationErrors.dataAcolhimento}>
                 <input type="date" name="dataAcolhimento" value={guest.dataAcolhimento} onChange={updateField} />
               </Field>
               <Field label="Data de retorno">
@@ -527,7 +341,7 @@ function App() {
           <>
             <SectionHeader eyebrow="Identificação" title="Dados pessoais" />
             <div className="form-grid">
-              <Field label="Nome" full>
+              <Field label="Nome *" full hasError={validationErrors.nome}>
                 <input name="nome" value={guest.nome} onChange={updateField} />
               </Field>
               <Field label="Data de nascimento">
@@ -770,35 +584,6 @@ function App() {
       </div>
     );
   }
-}
-
-function SectionHeader({ eyebrow, title, compact = false }) {
-  return (
-    <div className={`section-title ${compact ? "compact" : ""}`}>
-      <span>{eyebrow}</span>
-      <h2>{title}</h2>
-    </div>
-  );
-}
-
-function ListToolbar({ label, onAdd }) {
-  return (
-    <div className="list-toolbar">
-      <strong>{label}</strong>
-      <button className="ghost-button" type="button" onClick={onAdd}>
-        Adicionar
-      </button>
-    </div>
-  );
-}
-
-function ReviewItem({ label, value }) {
-  return (
-    <article className="review-card">
-      <span>{label}</span>
-      <strong>{value || "Não informado"}</strong>
-    </article>
-  );
 }
 
 export default App;
