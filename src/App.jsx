@@ -21,6 +21,9 @@ function createDischarge(number) {
     numero: number,
     data: "",
     motivo: "",
+    condicoesSaida: "",
+    encaminhamentoRealizado: "",
+    observacoesFinais: "",
     devolveuRoupas: false,
     levouDocumentos: false,
     temLesoes: false,
@@ -43,6 +46,7 @@ function createEvolution() {
     id: crypto.randomUUID(),
     data: new Date().toISOString().slice(0, 10),
     texto: "",
+    observacoes: "",
     tecnico: ""
   };
 }
@@ -55,11 +59,116 @@ function createReferral() {
   };
 }
 
-function Field({ label, children, full = false }) {
+function cleanCPF(value) {
+  return String(value || "").replace(/\D/g, "");
+}
+
+function isValidCPF(value) {
+  const cpf = cleanCPF(value);
+
+  if (cpf.length !== 11 || /^(\d)\1{10}$/.test(cpf)) {
+    return false;
+  }
+
+  const calculateDigit = (base, factor) => {
+    const total = base
+      .split("")
+      .reduce((sum, digit) => sum + Number(digit) * factor--, 0);
+    const remainder = (total * 10) % 11;
+    return remainder === 10 ? 0 : remainder;
+  };
+
+  const firstDigit = calculateDigit(cpf.slice(0, 9), 10);
+  const secondDigit = calculateDigit(cpf.slice(0, 10), 11);
+
+  return firstDigit === Number(cpf[9]) && secondDigit === Number(cpf[10]);
+}
+
+function normalizeSearch(value) {
+  return String(value || "")
+    .trim()
+    .toLocaleLowerCase("pt-BR")
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "");
+}
+
+function toDateFilterValue(value) {
+  if (!value) {
+    return "";
+  }
+
+  const text = String(value).trim();
+
+  if (/^\d{4}-\d{2}-\d{2}/.test(text)) {
+    return text.slice(0, 10);
+  }
+
+  const brazilianDate = text.match(/^(\d{2})\/(\d{2})\/(\d{4})$/);
+  if (brazilianDate) {
+    return `${brazilianDate[3]}-${brazilianDate[2]}-${brazilianDate[1]}`;
+  }
+
+  const parsed = new Date(text);
+  return Number.isNaN(parsed.getTime()) ? "" : parsed.toISOString().slice(0, 10);
+}
+
+function isServerUnavailableError(error) {
   return (
-    <label className={`field ${full ? "field-full" : ""}`}>
+    error?.name === "AbortError" ||
+    error instanceof TypeError ||
+    Number(error?.status) >= 500
+  );
+}
+
+function hasDischargeInfo(item) {
+  return Boolean(
+    item?.data ||
+      item?.motivo ||
+      item?.condicoesSaida ||
+      item?.encaminhamentoRealizado ||
+      item?.observacoesFinais ||
+      item?.tecnico ||
+      item?.assinaturaUsuario
+  );
+}
+
+function getLatestDischarge(record) {
+  return (record?.desligamentos || []).filter(hasDischargeInfo).at(-1) || null;
+}
+
+function getGuestStatus(record) {
+  return getLatestDischarge(record) ? "Desligado" : "Acolhido";
+}
+
+function formatDate(value) {
+  if (!value) {
+    return "";
+  }
+
+  const text = String(value);
+  if (/^\d{4}-\d{2}-\d{2}/.test(text)) {
+    const [year, month, day] = text.slice(0, 10).split("-");
+    return `${day}/${month}/${year}`;
+  }
+
+  return text;
+}
+
+function SearchIcon() {
+  return (
+    <svg className="button-icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false">
+      <path d="M10.8 18.1a7.3 7.3 0 1 1 0-14.6 7.3 7.3 0 0 1 0 14.6Zm0-2a5.3 5.3 0 1 0 0-10.6 5.3 5.3 0 0 0 0 10.6Z" />
+      <path d="m16.2 15.5 4.1 4.1-1.4 1.4-4.1-4.1 1.4-1.4Z" />
+    </svg>
+  );
+}
+
+function Field({ label, children, full = false, error = "" }) {
+  return (
+    <label className={`field ${full ? "field-full" : ""} ${error ? "has-error" : ""}`}>
       <span>{label}</span>
       {children}
+      {error && <small className="field-error">{error}</small>}
     </label>
   );
 }
@@ -87,6 +196,23 @@ function App() {
   const [selectedId, setSelectedId] = useState("");
   const [status, setStatus] = useState("Rascunho local");
   const [apiStatus, setApiStatus] = useState("Aguardando envio");
+  const [isSubmitting, setIsSubmitting] = useState(false);
+  const [fieldErrors, setFieldErrors] = useState({});
+  const [notification, setNotification] = useState(null);
+  const [filters, setFilters] = useState({
+    nome: "",
+    cpf: "",
+    protocolo: "",
+    dataAcolhimento: ""
+  });
+  const [detailRecordKey, setDetailRecordKey] = useState("");
+  const [deleteTargetKey, setDeleteTargetKey] = useState("");
+  const [deleteConfirmation, setDeleteConfirmation] = useState("");
+  const [dischargeDraft, setDischargeDraft] = useState(null);
+  const [dischargeErrors, setDischargeErrors] = useState({});
+  const [showEvolutionPanel, setShowEvolutionPanel] = useState(false);
+  const [evolutionDraft, setEvolutionDraft] = useState(() => createEvolution());
+  const [evolutionErrors, setEvolutionErrors] = useState({});
 
   useEffect(() => {
     localStorage.setItem(DRAFT_KEY, JSON.stringify(guest));
@@ -96,12 +222,65 @@ function App() {
     localStorage.setItem(STORAGE_KEY, JSON.stringify(records));
   }, [records]);
 
+  useEffect(() => {
+    if (!notification) {
+      return undefined;
+    }
+
+    const timer = window.setTimeout(() => setNotification(null), 4500);
+    return () => window.clearTimeout(timer);
+  }, [notification]);
+
+  useEffect(() => {
+    if (!detailRecordKey && !deleteTargetKey && !dischargeDraft) {
+      return undefined;
+    }
+
+    function closeOnEscape(event) {
+      if (event.key !== "Escape") {
+        return;
+      }
+
+      if (deleteTargetKey) {
+        closeDeleteModal();
+      } else if (dischargeDraft) {
+        closeDischargeModal();
+      } else {
+        closeDetailsModal();
+      }
+    }
+
+    document.addEventListener("keydown", closeOnEscape);
+    return () => document.removeEventListener("keydown", closeOnEscape);
+  }, [detailRecordKey, deleteTargetKey, dischargeDraft]);
+
   const selectedIndex = sections.findIndex((section) => section.id === currentSection);
   const progress = Math.round(((selectedIndex + 1) / sections.length) * 100);
 
-  const pendingDischarges = useMemo(
-    () => guest.desligamentos.filter((item) => item.data || item.motivo).length,
-    [guest.desligamentos]
+  const filteredRecords = useMemo(() => {
+    const nameFilter = normalizeSearch(filters.nome);
+    const cpfFilter = cleanCPF(filters.cpf);
+    const protocolFilter = normalizeSearch(filters.protocolo);
+    const dateFilter = filters.dataAcolhimento;
+
+    return records.filter((record) => {
+      const matchesName = !nameFilter || normalizeSearch(record?.nome).includes(nameFilter);
+      const matchesCPF = !cpfFilter || cleanCPF(record?.cpf).includes(cpfFilter);
+      const matchesProtocol = !protocolFilter || normalizeSearch(record?.protocolo).includes(protocolFilter);
+      const matchesDate = !dateFilter || toDateFilterValue(record?.dataAcolhimento) === dateFilter;
+
+      return matchesName && matchesCPF && matchesProtocol && matchesDate;
+    });
+  }, [records, filters]);
+
+  const hasActiveFilters = Object.values(filters).some(Boolean);
+  const detailRecord = useMemo(
+    () => records.find((record) => getRecordKey(record) === detailRecordKey) || null,
+    [records, detailRecordKey]
+  );
+  const deleteTarget = useMemo(
+    () => records.find((record) => getRecordKey(record) === deleteTargetKey) || null,
+    [records, deleteTargetKey]
   );
 
   function readDraft() {
@@ -186,6 +365,14 @@ function App() {
       ...current,
       [name]: type === "checkbox" ? checked : value === "true" ? true : value === "false" ? false : value
     }));
+
+    if (fieldErrors[name]) {
+      setFieldErrors((current) => {
+        const next = { ...current };
+        delete next[name];
+        return next;
+      });
+    }
   }
 
   function updateDischarge(index, field, value) {
@@ -232,7 +419,47 @@ function App() {
     }));
   }
 
-  function saveLocal() {
+  function showNotification(type, message) {
+    setNotification({ type, message });
+  }
+
+  function validateGuest() {
+    const errors = {};
+
+    if (!String(guest.nome || "").trim()) {
+      errors.nome = "Nome completo é obrigatório.";
+    }
+
+    if (!String(guest.dataAcolhimento || "").trim()) {
+      errors.dataAcolhimento = "Data de acolhimento é obrigatória.";
+    }
+
+    if (!String(guest.dataNascimento || "").trim() && !String(guest.idade || "").trim()) {
+      errors.idade = "Informe a data de nascimento ou a idade aproximada.";
+    }
+
+    if (String(guest.cpf || "").trim() && !isValidCPF(guest.cpf)) {
+      errors.cpf = "CPF inválido.";
+    }
+
+    setFieldErrors(errors);
+
+    if (Object.keys(errors).length > 0) {
+      showNotification("error", "Revise os campos obrigatórios antes de salvar.");
+      if (errors.dataAcolhimento) {
+        setCurrentSection("inicio");
+      } else if (errors.nome || errors.idade) {
+        setCurrentSection("pessoais");
+      } else if (errors.cpf) {
+        setCurrentSection("documentos");
+      }
+      return false;
+    }
+
+    return true;
+  }
+
+  function buildLocalRecord() {
     const record = {
       ...guest,
       id: normalizeBackendId(guest.id),
@@ -240,7 +467,13 @@ function App() {
       protocolo: guest.protocolo || `FB-${new Date().getFullYear()}-${String(records.length + 1).padStart(3, "0")}`
     };
 
+    return record;
+  }
+
+  function saveLocal() {
+    const record = buildLocalRecord();
     persistRecord(record);
+    showNotification("success", "Rascunho salvo no navegador.");
   }
 
   function persistRecord(record) {
@@ -255,46 +488,576 @@ function App() {
   }
 
   async function submitToApi() {
+    if (isSubmitting || !validateGuest()) {
+      return;
+    }
+
     const hasBackendId = Number.isInteger(normalizeBackendId(guest.id));
     const payload = sanitizePayload(guest);
+    const controller = new AbortController();
+    const timeoutId = window.setTimeout(() => controller.abort(), 15000);
+
+    setIsSubmitting(true);
     setApiStatus("Enviando...");
 
     try {
       const response = await fetch(`${API_URL}/hospedes`, {
         method: hasBackendId ? "PUT" : "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(payload)
+        body: JSON.stringify(payload),
+        signal: controller.signal
       });
 
       if (!response.ok) {
-        throw new Error(`HTTP ${response.status}`);
+        const error = new Error(`HTTP ${response.status}`);
+        error.status = response.status;
+        throw error;
       }
 
-      const saved = normalizeGuest({ ...(await response.json()), localId: guest.localId });
+      const responseData = await readResponseJson(response);
+      const saved = normalizeGuest({ ...guest, ...responseData, localId: guest.localId });
       setApiStatus("Enviado para o back");
       persistRecord(saved);
+      showNotification("success", "Hóspede salvo com sucesso.");
     } catch (error) {
+      const message = isServerUnavailableError(error)
+        ? "Não foi possível conectar ao servidor. Verifique se o backend está em execução e tente novamente."
+        : "Não foi possível salvar o hóspede. Verifique os dados e tente novamente.";
+
       setApiStatus("Back indisponível; salvo localmente");
-      saveLocal();
+      persistRecord(buildLocalRecord());
+      showNotification("error", message);
+    } finally {
+      window.clearTimeout(timeoutId);
+      setIsSubmitting(false);
     }
   }
 
-  function handleLoadRecord(record) {
+  async function readResponseJson(response) {
+    const text = await response.text();
+    if (!text) {
+      return {};
+    }
+
+    try {
+      return JSON.parse(text);
+    } catch {
+      return {};
+    }
+  }
+
+  function loadRecord(record) {
+    setGuest(normalizeGuest(record));
+    setFieldErrors({});
+    setSelectedId(getRecordKey(record));
+    setStatus("Registro carregado");
+    setCurrentSection("inicio");
+    setValidationErrors({});
+  }
+
+  function openGuestDetails(record) {
+    setDetailRecordKey(getRecordKey(record));
+    setShowEvolutionPanel(false);
+    setEvolutionDraft(createEvolution());
+    setEvolutionErrors({});
+  }
+
+  function closeDetailsModal() {
+    setDetailRecordKey("");
+    setShowEvolutionPanel(false);
+    setEvolutionDraft(createEvolution());
+    setEvolutionErrors({});
+  }
+
+  function editRecord(record) {
     loadRecord(record);
+    closeDetailsModal();
+  }
+
+  function newRecord() {
+    const blank = { ...emptyGuest, localId: crypto.randomUUID(), desligamentos: [createDischarge(1)] };
+    setGuest(blank);
+    setFieldErrors({});
+    setSelectedId("");
+    setStatus("Novo rascunho");
     setCurrentSection("inicio");
     setValidationErrors({});
   }
 
-  function handleNewRecord() {
-    newRecord();
-    setCurrentSection("inicio");
-    setValidationErrors({});
+  function requestDeleteRecord(record) {
+    setDeleteTargetKey(getRecordKey(record));
+    setDeleteConfirmation("");
   }
 
-  function handleSubmit() {
-    if (validateSection()) {
-      submitToApi();
+  function closeDeleteModal() {
+    setDeleteTargetKey("");
+    setDeleteConfirmation("");
+  }
+
+  function confirmDeleteRecord() {
+    if (!deleteTarget || deleteConfirmation !== "EXCLUIR") {
+      return;
     }
+
+    const id = getRecordKey(deleteTarget);
+    setRecords((current) => current.filter((item) => getRecordKey(item) !== id));
+    if (selectedId === id) {
+      newRecord();
+    }
+    if (detailRecordKey === id) {
+      closeDetailsModal();
+    }
+    closeDeleteModal();
+    showNotification("success", "Hóspede excluído com segurança.");
+  }
+
+  function getRecordKey(record) {
+    return String(record.localId || record.id);
+  }
+
+  function updateFilter(event) {
+    const { name, value } = event.target;
+    setFilters((current) => ({
+      ...current,
+      [name]: value
+    }));
+  }
+
+  function clearFilters() {
+    setFilters({
+      nome: "",
+      cpf: "",
+      protocolo: "",
+      dataAcolhimento: ""
+    });
+  }
+
+  function submitFilters(event) {
+    event.preventDefault();
+    showNotification("success", "Busca aplicada.");
+  }
+
+  function openDischargeModal(record) {
+    const latestDischarge = getLatestDischarge(record);
+    const base = latestDischarge || createDischarge((record.desligamentos || []).length + 1);
+    setDischargeDraft({
+      ...createDischarge(base.numero || 1),
+      ...base,
+      recordKey: getRecordKey(record)
+    });
+    setDischargeErrors({});
+  }
+
+  function closeDischargeModal() {
+    setDischargeDraft(null);
+    setDischargeErrors({});
+  }
+
+  function updateDischargeDraft(event) {
+    const { name, value, type, checked } = event.target;
+    setDischargeDraft((current) => ({
+      ...current,
+      [name]: type === "checkbox" ? checked : value
+    }));
+
+    if (dischargeErrors[name]) {
+      setDischargeErrors((current) => {
+        const next = { ...current };
+        delete next[name];
+        return next;
+      });
+    }
+  }
+
+  function saveDischarge(event) {
+    event.preventDefault();
+
+    const errors = {};
+    if (!String(dischargeDraft?.data || "").trim()) {
+      errors.data = "Data de saída é obrigatória.";
+    }
+    if (!String(dischargeDraft?.motivo || "").trim()) {
+      errors.motivo = "Motivo do desligamento é obrigatório.";
+    }
+    if (!String(dischargeDraft?.condicoesSaida || "").trim()) {
+      errors.condicoesSaida = "Informe as condições de saída.";
+    }
+
+    setDischargeErrors(errors);
+    if (Object.keys(errors).length > 0) {
+      showNotification("error", "Revise os campos do registro de saída.");
+      return;
+    }
+
+    const record = records.find((item) => getRecordKey(item) === dischargeDraft.recordKey);
+    if (!record) {
+      showNotification("error", "Não foi possível localizar o hóspede para registrar a saída.");
+      return;
+    }
+
+    const currentDischarges = record.desligamentos || [];
+    const otherDischarges = currentDischarges.filter((item) => item.id !== dischargeDraft.id && hasDischargeInfo(item));
+    const savedDischarge = {
+      ...dischargeDraft,
+      numero: otherDischarges.length + 1
+    };
+    delete savedDischarge.recordKey;
+
+    const updatedRecord = normalizeGuest({
+      ...record,
+      desligamentos: renumberDischarges([...otherDischarges, savedDischarge])
+    });
+
+    persistRecord(updatedRecord);
+    setDetailRecordKey(getRecordKey(updatedRecord));
+    closeDischargeModal();
+    showNotification("success", "Registro de saída salvo com sucesso.");
+  }
+
+  function openEvolutionPanel() {
+    setShowEvolutionPanel(true);
+    setEvolutionDraft(createEvolution());
+    setEvolutionErrors({});
+  }
+
+  function updateEvolutionDraft(event) {
+    const { name, value } = event.target;
+    setEvolutionDraft((current) => ({
+      ...current,
+      [name]: value
+    }));
+
+    if (evolutionErrors[name]) {
+      setEvolutionErrors((current) => {
+        const next = { ...current };
+        delete next[name];
+        return next;
+      });
+    }
+  }
+
+  function saveEvolution(event) {
+    event.preventDefault();
+
+    const errors = {};
+    if (!String(evolutionDraft.data || "").trim()) {
+      errors.data = "Data do acompanhamento é obrigatória.";
+    }
+    if (!String(evolutionDraft.texto || "").trim()) {
+      errors.texto = "Descrição da evolução é obrigatória.";
+    }
+
+    setEvolutionErrors(errors);
+    if (Object.keys(errors).length > 0) {
+      showNotification("error", "Revise os campos da evolução.");
+      return;
+    }
+
+    const record = records.find((item) => getRecordKey(item) === detailRecordKey);
+    if (!record) {
+      showNotification("error", "Não foi possível localizar o hóspede para salvar a evolução.");
+      return;
+    }
+
+    const updatedRecord = normalizeGuest({
+      ...record,
+      evolucoes: [...(record.evolucoes || []), { ...evolutionDraft, id: evolutionDraft.id || crypto.randomUUID() }]
+    });
+
+    persistRecord(updatedRecord);
+    setDetailRecordKey(getRecordKey(updatedRecord));
+    setEvolutionDraft(createEvolution());
+    setEvolutionErrors({});
+    setShowEvolutionPanel(true);
+    showNotification("success", "Evolução registrada com sucesso.");
+  }
+
+  function sanitizePayload(value) {
+    const payload = {
+      ...value,
+      id: normalizeBackendId(value.id),
+      idade: value.idade === "" ? null : Number(value.idade),
+      demandaEspontanea: normalizeYesNo(value.demandaEspontanea, "sim"),
+      evolucoes: value.evolucoes.map((item) => ({
+        data: item.data,
+        descricao: item.texto,
+        responsavel: item.tecnico
+      })),
+      encaminhamentos: value.encaminhamentos.map((item) => ({
+        data: item.mes,
+        destino: item.encaminhamento,
+        observacoes: ""
+      }))
+    };
+
+    delete payload.localId;
+
+    if (!payload.id) {
+      delete payload.id;
+    }
+
+    return payload;
+  }
+
+  function nextSection() {
+    setCurrentSection(sections[Math.min(selectedIndex + 1, sections.length - 1)].id);
+  }
+
+  function previousSection() {
+    setCurrentSection(sections[Math.max(selectedIndex - 1, 0)].id);
+  }
+
+  function renderDetailsModal() {
+    if (!detailRecord) {
+      return null;
+    }
+
+    const discharge = getLatestDischarge(detailRecord);
+    const documents = [
+      ["CPF", detailRecord.cpf],
+      ["RG", detailRecord.rg],
+      ["Título eleitoral", detailRecord.tituloEleitoral],
+      ["Carteira de trabalho", detailRecord.carteiraTrabalho],
+      ["Certidão de nascimento", detailRecord.certidaoNascimento],
+      ["Boletim de ocorrência", detailRecord.boletimOcorrencia],
+      ["Cartão SUS", detailRecord.cartaoSus]
+    ];
+    const benefits = [
+      detailRecord.recebeBolsaFamilia && "Bolsa Família",
+      detailRecord.recebeBpc && "BPC",
+      detailRecord.recebeAposentadoria && "Aposentadoria",
+      detailRecord.recebeCadUnico && "CadÚnico",
+      detailRecord.outrosBeneficios
+    ].filter(Boolean);
+    const health = [
+      detailRecord.problemaSaude && ["Problema de saúde", detailRecord.problemaSaudeQual || "Sim"],
+      detailRecord.alergia && ["Alergia", detailRecord.alergiaQual || "Sim"],
+      detailRecord.medicamentoControlado && ["Medicação controlada", detailRecord.medicamentoQual || "Sim"],
+      detailRecord.usaSpa && ["Substância psicoativa", detailRecord.usaSpaQual || "Sim"],
+      detailRecord.outraAlergia && ["Outro cuidado/alergia", detailRecord.outraAlergiaQual || "Sim"]
+    ].filter(Boolean);
+
+    return (
+      <div className="modal-backdrop" role="presentation" onMouseDown={(event) => event.target === event.currentTarget && closeDetailsModal()}>
+        <section className="modal-panel details-modal" role="dialog" aria-modal="true" aria-labelledby="guest-details-title">
+          <header className="modal-header">
+            <div>
+              <span className={`status-badge ${getGuestStatus(detailRecord) === "Desligado" ? "danger" : "success"}`}>
+                {getGuestStatus(detailRecord)}
+              </span>
+              <h2 id="guest-details-title">{detailRecord.nome || "Hóspede sem nome"}</h2>
+              <p>{detailRecord.protocolo || "Sem protocolo"}</p>
+            </div>
+            <div className="modal-header-actions">
+              <button className="ghost-button compact-button" type="button" onClick={openEvolutionPanel}>
+                Evolução / Acompanhamento
+              </button>
+              <button className="ghost-button compact-button" type="button" onClick={() => editRecord(detailRecord)}>
+                Editar ficha
+              </button>
+              <button className="danger-button compact-button" type="button" onClick={() => requestDeleteRecord(detailRecord)}>
+                Excluir hóspede
+              </button>
+              <button className="icon-button" type="button" onClick={closeDetailsModal} aria-label="Fechar detalhes">
+                ×
+              </button>
+            </div>
+          </header>
+
+          <div className="details-content">
+            <DetailSection
+              title="Dados principais"
+              items={[
+                ["Nome", detailRecord.nome],
+                ["Idade", detailRecord.idade],
+                ["Data de nascimento", formatDate(detailRecord.dataNascimento)],
+                ["Data de acolhimento", formatDate(detailRecord.dataAcolhimento)],
+                ["Telefone", detailRecord.telefoneContato],
+                ["Endereço de referência", detailRecord.enderecoReferencia],
+                ["Observações", detailRecord.observacoes]
+              ]}
+            />
+            <DetailSection title="Documentos" items={documents} emptyMessage="Nenhum documento informado." />
+            <DetailSection
+              title="Informações sociais"
+              items={[
+                ["Demanda espontânea", detailRecord.demandaEspontanea === "sim" ? "Sim" : "Não"],
+                ["Instituição de encaminhamento", detailRecord.instituicaoEncaminhamento],
+                ["Motivo da entrada", detailRecord.motivoEntrada],
+                ["Referências sociofamiliares", detailRecord.referenciasFamiliares],
+                ["Mãe", detailRecord.mae],
+                ["Pai", detailRecord.pai],
+                ["Benefícios", benefits.join(", ")]
+              ]}
+            />
+            <DetailSection title="Saúde e cuidados" items={health} emptyMessage="Nenhuma condição de saúde informada." />
+          </div>
+
+          {showEvolutionPanel && (
+            <section className="evolution-panel" aria-label="Evolução e acompanhamento do hóspede">
+              <div className="section-title compact">
+                <span>Evolução / Acompanhamento</span>
+                <strong>Acompanhamento do acolhimento</strong>
+              </div>
+              <div className="evolution-list">
+                {(detailRecord.evolucoes || []).length === 0 ? (
+                  <p className="muted">Nenhuma evolução registrada para este hóspede.</p>
+                ) : (
+                  detailRecord.evolucoes.map((item) => (
+                    <article className="evolution-card" key={item.id}>
+                      <div>
+                        <strong>{formatDate(item.data) || "Sem data"}</strong>
+                        <span>{item.tecnico || "Responsável não informado"}</span>
+                      </div>
+                      <p>{item.texto || item.descricao}</p>
+                      {item.observacoes && <small>{item.observacoes}</small>}
+                    </article>
+                  ))
+                )}
+              </div>
+              <form className="evolution-form" onSubmit={saveEvolution}>
+                <div className="form-grid">
+                  <Field label="Data do acompanhamento" error={evolutionErrors.data}>
+                    <input type="date" name="data" value={evolutionDraft.data} onChange={updateEvolutionDraft} />
+                  </Field>
+                  <Field label="Responsável">
+                    <input name="tecnico" value={evolutionDraft.tecnico} onChange={updateEvolutionDraft} />
+                  </Field>
+                  <Field label="Descrição/evolução do acolhimento" full error={evolutionErrors.texto}>
+                    <textarea name="texto" rows="4" value={evolutionDraft.texto} onChange={updateEvolutionDraft} />
+                  </Field>
+                  <Field label="Observações" full>
+                    <textarea name="observacoes" rows="3" value={evolutionDraft.observacoes} onChange={updateEvolutionDraft} />
+                  </Field>
+                </div>
+                <div className="modal-actions">
+                  <button className="ghost-button" type="button" onClick={() => setShowEvolutionPanel(false)}>
+                    Fechar acompanhamento
+                  </button>
+                  <button className="primary-button" type="submit">
+                    Salvar evolução
+                  </button>
+                </div>
+              </form>
+            </section>
+          )}
+
+          <footer className="discharge-summary">
+            <div>
+              <span>Registro de saída</span>
+              {discharge ? (
+                <div className="summary-grid">
+                  <DetailItem label="Data de saída" value={formatDate(discharge.data)} />
+                  <DetailItem label="Motivo" value={discharge.motivo} />
+                  <DetailItem label="Condições de saída" value={discharge.condicoesSaida} />
+                  <DetailItem label="Encaminhamento" value={discharge.encaminhamentoRealizado} />
+                  <DetailItem label="Observações finais" value={discharge.observacoesFinais} />
+                  <DetailItem label="Responsável" value={discharge.tecnico} />
+                </div>
+              ) : (
+                <p className="muted">Nenhuma saída registrada.</p>
+              )}
+            </div>
+            <button className="primary-button" type="button" onClick={() => openDischargeModal(detailRecord)}>
+              {discharge ? "Editar saída" : "Registrar saída"}
+            </button>
+          </footer>
+        </section>
+      </div>
+    );
+  }
+
+  function renderDischargeModal() {
+    if (!dischargeDraft) {
+      return null;
+    }
+
+    return (
+      <div className="modal-backdrop top-modal" role="presentation" onMouseDown={(event) => event.target === event.currentTarget && closeDischargeModal()}>
+        <form className="modal-panel compact-modal" role="dialog" aria-modal="true" aria-labelledby="discharge-title" onSubmit={saveDischarge}>
+          <header className="modal-header">
+            <div>
+              <span>Condições de saída</span>
+              <h2 id="discharge-title">{hasDischargeInfo(dischargeDraft) ? "Editar saída" : "Registrar saída"}</h2>
+            </div>
+            <button className="icon-button" type="button" onClick={closeDischargeModal} aria-label="Fechar registro de saída">
+              ×
+            </button>
+          </header>
+
+          <div className="form-grid single">
+            <Field label="Data de saída" error={dischargeErrors.data}>
+              <input type="date" name="data" value={dischargeDraft.data || ""} onChange={updateDischargeDraft} />
+            </Field>
+            <Field label="Motivo do desligamento" full error={dischargeErrors.motivo}>
+              <textarea name="motivo" rows="3" value={dischargeDraft.motivo || ""} onChange={updateDischargeDraft} />
+            </Field>
+            <Field label="Condições de saída" full error={dischargeErrors.condicoesSaida}>
+              <textarea name="condicoesSaida" rows="3" value={dischargeDraft.condicoesSaida || ""} onChange={updateDischargeDraft} />
+            </Field>
+            <Field label="Encaminhamento realizado" full>
+              <input name="encaminhamentoRealizado" value={dischargeDraft.encaminhamentoRealizado || ""} onChange={updateDischargeDraft} />
+            </Field>
+            <Field label="Observações finais" full>
+              <textarea name="observacoesFinais" rows="3" value={dischargeDraft.observacoesFinais || ""} onChange={updateDischargeDraft} />
+            </Field>
+            <div className="check-grid compact-checks">
+              <label><input type="checkbox" name="devolveuRoupas" checked={Boolean(dischargeDraft.devolveuRoupas)} onChange={updateDischargeDraft} /> Devolveu roupas de cama</label>
+              <label><input type="checkbox" name="levouDocumentos" checked={Boolean(dischargeDraft.levouDocumentos)} onChange={updateDischargeDraft} /> Levou documentos</label>
+              <label><input type="checkbox" name="temLesoes" checked={Boolean(dischargeDraft.temLesoes)} onChange={updateDischargeDraft} /> Tem lesões corporais</label>
+            </div>
+            <Field label="Responsável pelo registro">
+              <input name="tecnico" value={dischargeDraft.tecnico || ""} onChange={updateDischargeDraft} />
+            </Field>
+          </div>
+
+          <footer className="modal-actions">
+            <button className="ghost-button" type="button" onClick={closeDischargeModal}>
+              Cancelar
+            </button>
+            <button className="primary-button" type="submit">
+              Salvar saída
+            </button>
+          </footer>
+        </form>
+      </div>
+    );
+  }
+
+  function renderDeleteModal() {
+    if (!deleteTarget) {
+      return null;
+    }
+
+    return (
+      <div className="modal-backdrop top-modal" role="presentation" onMouseDown={(event) => event.target === event.currentTarget && closeDeleteModal()}>
+        <section className="modal-panel compact-modal" role="dialog" aria-modal="true" aria-labelledby="delete-title">
+          <header className="modal-header">
+            <div>
+              <span>Excluir hóspede</span>
+              <h2 id="delete-title">Confirmar exclusão</h2>
+            </div>
+            <button className="icon-button" type="button" onClick={closeDeleteModal} aria-label="Fechar confirmação de exclusão">
+              ×
+            </button>
+          </header>
+          <p className="danger-copy">
+            Tem certeza que deseja excluir este hóspede? Essa ação pode remover permanentemente a ficha e seus registros locais.
+          </p>
+          <Field label="Digite EXCLUIR para confirmar">
+            <input value={deleteConfirmation} onChange={(event) => setDeleteConfirmation(event.target.value)} autoFocus />
+          </Field>
+          <footer className="modal-actions">
+            <button className="ghost-button" type="button" onClick={closeDeleteModal}>
+              Cancelar
+            </button>
+            <button className="danger-button" type="button" onClick={confirmDeleteRecord} disabled={deleteConfirmation !== "EXCLUIR"}>
+              Confirmar exclusão
+            </button>
+          </footer>
+        </section>
+      </div>
+    );
   }
 
   return (
@@ -315,6 +1078,12 @@ function App() {
           <small>{progress}% preenchido</small>
         </div>
       </header>
+
+      {notification && (
+        <div className={`toast ${notification.type}`} role="status" aria-live="polite">
+          {notification.message}
+        </div>
+      )}
 
       <main className="workspace">
         <aside className="sidebar">
@@ -344,32 +1113,48 @@ function App() {
               ))}
             </nav>
           </section>
+        </aside>
 
-          <section className="side-panel search-panel">
+        <section className="content-area">
+          <section className="search-panel">
             <div className="section-title compact">
-              <span>Filtro</span>
-              <strong>Buscar registros</strong>
+              <span>Buscar hóspedes</span>
+              <strong>Filtros de registros locais</strong>
             </div>
-            <div className="search-grid">
-              <Field label="Nome">
-                <input name="nome" value={filters.nome} onChange={updateFilter} />
-              </Field>
-              <Field label="CPF">
-                <input name="cpf" value={filters.cpf} onChange={updateFilter} />
-              </Field>
-              <Field label="Protocolo">
-                <input name="protocolo" value={filters.protocolo} onChange={updateFilter} />
-              </Field>
-              <Field label="Data de acolhimento">
+            <form className="filters-panel" aria-label="Filtros de hóspedes salvos" onSubmit={submitFilters}>
+              <label className="filter-field">
+                <span>Nome</span>
+                <input name="nome" value={filters.nome} onChange={updateFilter} placeholder="Buscar por nome" />
+              </label>
+              <label className="filter-field">
+                <span>CPF</span>
+                <input name="cpf" value={filters.cpf} onChange={updateFilter} placeholder="CPF com ou sem pontuação" />
+              </label>
+              <label className="filter-field">
+                <span>Protocolo</span>
+                <input name="protocolo" value={filters.protocolo} onChange={updateFilter} placeholder="Buscar protocolo" />
+              </label>
+              <label className="filter-field">
+                <span>Data de acolhimento</span>
                 <input type="date" name="dataAcolhimento" value={filters.dataAcolhimento} onChange={updateFilter} />
-              </Field>
-            </div>
+              </label>
+              <button className="primary-button compact-button search-button" type="submit">
+                <SearchIcon />
+                Pesquisar
+              </button>
+              <button className="ghost-button compact-button" type="button" onClick={clearFilters} disabled={!hasActiveFilters}>
+                Limpar filtros
+              </button>
+            </form>
           </section>
 
-          <section className="side-panel records-panel">
-            <div className="section-title compact">
-              <span>Registros locais</span>
-              <strong>{filteredRecords.length}/{records.length}</strong>
+          <section className="records-panel">
+            <div className="section-title compact records-heading">
+              <div>
+                <span>Hóspedes salvos</span>
+                <strong>Registros locais</strong>
+              </div>
+              <strong className="records-count">{hasActiveFilters ? `${filteredRecords.length}/${records.length}` : records.length}</strong>
             </div>
             
             <div className="utility-buttons">
@@ -406,22 +1191,24 @@ function App() {
             
             <div className="records-list">
               {records.length === 0 && <p className="muted">Nenhum hóspede salvo ainda.</p>}
-              {records.map((record) => (
+              {records.length > 0 && filteredRecords.length === 0 && (
+                <p className="muted">Nenhum hóspede encontrado com os filtros informados.</p>
+              )}
+              {filteredRecords.map((record) => (
                 <article key={getRecordKey(record)} className={getRecordKey(record) === selectedId ? "record-card selected" : "record-card"}>
-                  <button type="button" onClick={() => handleLoadRecord(record)}>
+                  <button type="button" onClick={() => openGuestDetails(record)}>
                     <strong>{record.nome || "Sem nome"}</strong>
                     <span>{record.protocolo || "Sem protocolo"}</span>
+                    <small>{getGuestStatus(record)} · Ver detalhes</small>
                   </button>
-                  <button className="danger-button" type="button" onClick={() => setDeleteTargetId(getRecordKey(record))}>
-                    Excluir
+                  <button className="danger-button" type="button" onClick={() => requestDeleteRecord(record)}>
+                    Excluir hóspede
                   </button>
                 </article>
               ))}
             </div>
           </section>
-        </aside>
 
-        <section className="content-area">
           <form className="form-panel" onSubmit={(event) => event.preventDefault()}>
             {renderSection()}
           </form>
@@ -442,8 +1229,8 @@ function App() {
                   Avançar
                 </button>
               ) : (
-                <button className="primary-button" type="button" onClick={submitToApi}>
-                  Concluir cadastro
+                <button className="primary-button" type="button" onClick={submitToApi} disabled={isSubmitting}>
+                  {isSubmitting ? "Salvando..." : "Concluir cadastro"}
                 </button>
               )}
             </div>
@@ -451,48 +1238,9 @@ function App() {
         </section>
       </main>
 
-      {/* Modal de Confirmação de Exclusão */}
-      {deleteTargetId !== null && (
-        <div className="modal-overlay">
-          <div className="modal-container">
-            <h3 className="modal-title">Confirmar Exclusão</h3>
-            <p className="modal-body">
-              Tem certeza que deseja excluir o registro de{" "}
-              <strong>
-                {records.find((r) => getRecordKey(r) === deleteTargetId)?.nome || "Hóspede sem nome"}
-              </strong>? Esta ação não poderá ser desfeita.
-            </p>
-            <div className="modal-actions">
-              <button className="ghost-button compact-button" type="button" onClick={() => setDeleteTargetId(null)}>
-                Cancelar
-              </button>
-              <button
-                className="danger-button compact-button"
-                type="button"
-                onClick={() => {
-                  deleteRecord(deleteTargetId);
-                  setDeleteTargetId(null);
-                  showToast("Hóspede excluído localmente", "info");
-                }}
-              >
-                Confirmar Exclusão
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* Recipiente de Notificações (Toasts) */}
-      <div className="toast-container">
-        {toasts.map((t) => (
-          <div key={t.id} className={`toast ${t.type}`}>
-            <span className="toast-content">{t.message}</span>
-            <button className="toast-close" type="button" onClick={() => setToasts((current) => current.filter((x) => x.id !== t.id))}>
-              &times;
-            </button>
-          </div>
-        ))}
-      </div>
+      {renderDetailsModal()}
+      {renderDischargeModal()}
+      {renderDeleteModal()}
     </div>
   );
 
@@ -503,7 +1251,7 @@ function App() {
           <>
             <SectionHeader eyebrow="Ficha de acolhimento" title="Informações iniciais" />
             <div className="form-grid">
-              <Field label="Data de acolhimento">
+              <Field label="Data de acolhimento" error={fieldErrors.dataAcolhimento}>
                 <input type="date" name="dataAcolhimento" value={guest.dataAcolhimento} onChange={updateField} />
               </Field>
               <Field label="Data de retorno">
@@ -531,13 +1279,13 @@ function App() {
           <>
             <SectionHeader eyebrow="Identificação" title="Dados pessoais" />
             <div className="form-grid">
-              <Field label="Nome" full>
+              <Field label="Nome completo" full error={fieldErrors.nome}>
                 <input name="nome" value={guest.nome} onChange={updateField} />
               </Field>
               <Field label="Data de nascimento">
                 <input type="date" name="dataNascimento" value={guest.dataNascimento} onChange={updateField} />
               </Field>
-              <Field label="Idade">
+              <Field label="Idade aproximada" error={fieldErrors.idade}>
                 <input name="idade" value={guest.idade} onChange={updateField} />
               </Field>
               <Field label="Escolaridade">
@@ -575,8 +1323,8 @@ function App() {
               <Field label="RG">
                 <input name="rg" value={guest.rg} onChange={updateField} />
               </Field>
-              <Field label="CPF" error={errors.cpf}>
-                <input className={errors.cpf ? "input-error" : ""} name="cpf" value={guest.cpf} onChange={updateField} />
+              <Field label="CPF" error={fieldErrors.cpf}>
+                <input name="cpf" value={guest.cpf} onChange={updateField} />
               </Field>
               <Field label="Título eleitoral" full>
                 <input name="tituloEleitoral" value={guest.tituloEleitoral} onChange={updateField} />
@@ -660,50 +1408,6 @@ function App() {
               <input type="checkbox" name="aceitouTermo" checked={guest.aceitouTermo} onChange={updateField} />
               Usuário(a) ciente das informações acima.
             </label>
-            <SectionHeader eyebrow="Desligamento" title="Termos de desligamento" compact />
-            <div className="list-toolbar discharge-toolbar">
-              <strong>{guest.desligamentos.length} termo(s) registrado(s)</strong>
-              <button className="ghost-button" type="button" onClick={addDischarge}>
-                Adicionar desligamento
-              </button>
-            </div>
-            <div className="discharge-grid">
-              {guest.desligamentos.map((item, index) => (
-                <article className="discharge-card" key={item.id}>
-                  <div className="card-heading">
-                    <h3>Desligamento {item.numero}</h3>
-                    <button
-                      className="danger-button compact-button"
-                      type="button"
-                      onClick={() => removeDischarge(item.id)}
-                      disabled={guest.desligamentos.length === 1}
-                    >
-                      Excluir
-                    </button>
-                  </div>
-                  <div className="form-grid single">
-                    <Field label="Data">
-                      <input type="date" value={item.data} onChange={(event) => updateDischarge(index, "data", event.target.value)} />
-                    </Field>
-                    <Field label="Motivo" full>
-                      <textarea rows="3" value={item.motivo} onChange={(event) => updateDischarge(index, "motivo", event.target.value)} />
-                    </Field>
-                    <label><input type="checkbox" checked={item.devolveuRoupas} onChange={(event) => updateDischarge(index, "devolveuRoupas", event.target.checked)} /> Devolveu roupas de cama</label>
-                    <label><input type="checkbox" checked={item.levouDocumentos} onChange={(event) => updateDischarge(index, "levouDocumentos", event.target.checked)} /> Levou documentos</label>
-                    <label><input type="checkbox" checked={item.temLesoes} onChange={(event) => updateDischarge(index, "temLesoes", event.target.checked)} /> Tem lesões corporais</label>
-                    <Field label="Assinatura do usuário" full>
-                      <input value={item.assinaturaUsuario} onChange={(event) => updateDischarge(index, "assinaturaUsuario", event.target.value)} />
-                    </Field>
-                    <Field label="Técnico">
-                      <input value={item.tecnico} onChange={(event) => updateDischarge(index, "tecnico", event.target.value)} />
-                    </Field>
-                    <Field label="Data do técnico">
-                      <input type="date" value={item.dataTecnico} onChange={(event) => updateDischarge(index, "dataTecnico", event.target.value)} />
-                    </Field>
-                  </div>
-                </article>
-              ))}
-            </div>
           </>
         );
       case "acompanhamento":
@@ -756,7 +1460,7 @@ function App() {
               <ReviewItem label="Cartão SUS" value={guest.cartaoSus} />
               <ReviewItem label="Evoluções" value={`${guest.evolucoes.length} registro(s)`} />
               <ReviewItem label="Encaminhamentos" value={`${guest.encaminhamentos.length} registro(s)`} />
-              <ReviewItem label="Desligamentos preenchidos" value={`${pendingDischarges} de ${guest.desligamentos.length}`} />
+              <ReviewItem label="Status" value={getGuestStatus(guest)} />
               <ReviewItem label="Termo de orientação" value={guest.aceitouTermo ? "Ciente" : "Pendente"} />
             </div>
           </>
@@ -774,6 +1478,73 @@ function App() {
       </div>
     );
   }
+}
+
+function SectionHeader({ eyebrow, title, compact = false }) {
+  return (
+    <div className={`section-title ${compact ? "compact" : ""}`}>
+      <span>{eyebrow}</span>
+      <h2>{title}</h2>
+    </div>
+  );
+}
+
+function ListToolbar({ label, onAdd }) {
+  return (
+    <div className="list-toolbar">
+      <strong>{label}</strong>
+      <button className="ghost-button" type="button" onClick={onAdd}>
+        Adicionar
+      </button>
+    </div>
+  );
+}
+
+function ReviewItem({ label, value }) {
+  return (
+    <article className="review-card">
+      <span>{label}</span>
+      <strong>{value || "Não informado"}</strong>
+    </article>
+  );
+}
+
+function DetailSection({ title, items, emptyMessage = "Nenhuma informação preenchida." }) {
+  const visibleItems = items.filter(([, value]) => {
+    if (Array.isArray(value)) {
+      return value.length > 0;
+    }
+
+    return value !== null && value !== undefined && String(value).trim() !== "";
+  });
+
+  return (
+    <section className="detail-section">
+      <h3>{title}</h3>
+      {visibleItems.length === 0 ? (
+        <p className="muted">{emptyMessage}</p>
+      ) : (
+        <div className="detail-list">
+          {visibleItems.map(([label, value]) => (
+            <DetailItem key={label} label={label} value={value} />
+          ))}
+        </div>
+      )}
+    </section>
+  );
+}
+
+function DetailItem({ label, value }) {
+  if (value === null || value === undefined || String(value).trim() === "") {
+    return null;
+  }
+
+  return (
+    <article className="detail-item">
+      <span>{label}</span>
+      <strong>{value}</strong>
+    </article>
+  );
 }
 
 export default App;
