@@ -559,6 +559,25 @@ button:focus-visible {
   padding: 8px 12px;
 }
 
+.field-error {
+  color: var(--danger);
+  font-size: 0.86rem;
+  margin-top: 4px;
+}
+
+.input-error {
+  border-color: var(--danger);
+}
+
+.search-grid {
+  display: grid;
+  gap: 12px;
+}
+
+.search-panel .section-title strong {
+  font-size: 1rem;
+}
+
 @media (max-width: 1180px) {
   .app-header,
   .workspace {

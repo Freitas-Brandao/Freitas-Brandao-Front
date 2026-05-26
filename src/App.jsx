@@ -15,45 +15,86 @@ const sections = [
   { id: "revisao", label: "Revisão" }
 ];
 
+function createDischarge(number) {
+  return {
+    id: crypto.randomUUID(),
+    numero: number,
+    data: "",
+    motivo: "",
+    devolveuRoupas: false,
+    levouDocumentos: false,
+    temLesoes: false,
+    assinaturaUsuario: "",
+    tecnico: "",
+    dataTecnico: ""
+  };
+}
+
+function renumberDischarges(items) {
+  return items.map((item, index) => ({
+    ...item,
+    id: item.id || crypto.randomUUID(),
+    numero: index + 1
+  }));
+}
+
+function createEvolution() {
+  return {
+    id: crypto.randomUUID(),
+    data: new Date().toISOString().slice(0, 10),
+    texto: "",
+    tecnico: ""
+  };
+}
+
+function createReferral() {
+  return {
+    id: crypto.randomUUID(),
+    mes: "",
+    encaminhamento: ""
+  };
+}
+
+function Field({ label, children, full = false }) {
+  return (
+    <label className={`field ${full ? "field-full" : ""}`}>
+      <span>{label}</span>
+      {children}
+    </label>
+  );
+}
+
+function RadioGroup({ label, name, value, onChange, trueValue = true, falseValue = false }) {
+  return (
+    <fieldset className="radio-group">
+      <legend>{label}</legend>
+      <label>
+        <input type="radio" name={name} value={String(trueValue)} checked={value === trueValue} onChange={onChange} />
+        Sim
+      </label>
+      <label>
+        <input type="radio" name={name} value={String(falseValue)} checked={value === falseValue} onChange={onChange} />
+        Não
+      </label>
+    </fieldset>
+  );
+}
+
 function App() {
   const [currentSection, setCurrentSection] = useState("inicio");
-  const [searchTerm, setSearchTerm] = useState("");
-  const [deleteTargetId, setDeleteTargetId] = useState(null);
-  const [toasts, setToasts] = useState([]);
-  const [validationErrors, setValidationErrors] = useState({});
-  const fileInputRef = useRef(null);
+  const [guest, setGuest] = useState(() => readDraft());
+  const [records, setRecords] = useState(() => readRecords());
+  const [selectedId, setSelectedId] = useState("");
+  const [status, setStatus] = useState("Rascunho local");
+  const [apiStatus, setApiStatus] = useState("Aguardando envio");
 
-  function showToast(message, type = "info") {
-    const id = crypto.randomUUID();
-    setToasts((current) => [...current, { id, message, type }]);
-    setTimeout(() => {
-      setToasts((current) => current.filter((t) => t.id !== id));
-    }, 4000);
-  }
+  useEffect(() => {
+    localStorage.setItem(DRAFT_KEY, JSON.stringify(guest));
+  }, [guest]);
 
-  const {
-    guest,
-    records,
-    status,
-    apiStatus,
-    loading,
-    selectedId,
-    updateField,
-    updateDischarge,
-    addDischarge,
-    removeDischarge,
-    updateList,
-    addListItem,
-    removeListItem,
-    saveLocal,
-    submitToApi,
-    syncPending,
-    exportData,
-    importData,
-    loadRecord,
-    newRecord,
-    deleteRecord
-  } = useGuestData(showToast);
+  useEffect(() => {
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(records));
+  }, [records]);
 
   const selectedIndex = sections.findIndex((section) => section.id === currentSection);
   const progress = Math.round(((selectedIndex + 1) / sections.length) * 100);
@@ -63,46 +104,179 @@ function App() {
     [guest.desligamentos]
   );
 
-  const filteredRecords = useMemo(() => {
-    if (!searchTerm.trim()) return records;
-    const term = searchTerm.toLowerCase();
-    return records.filter((r) => {
-      const nome = (r.nome || "").toLowerCase();
-      const cpf = (r.cpf || "").replace(/\D/g, "");
-      const cleanTerm = term.replace(/\D/g, "");
-      return nome.includes(term) || (cleanTerm && cpf.includes(cleanTerm));
+  function readDraft() {
+    try {
+      const saved = localStorage.getItem(DRAFT_KEY);
+      return saved ? normalizeGuest(JSON.parse(saved)) : { ...emptyGuest };
+    } catch {
+      return { ...emptyGuest };
+    }
+  }
+
+  function readRecords() {
+    try {
+      const saved = localStorage.getItem(STORAGE_KEY);
+      return saved ? JSON.parse(saved).map(normalizeGuest) : [];
+    } catch {
+      return [];
+    }
+  }
+
+  function normalizeGuest(value) {
+    return {
+      ...emptyGuest,
+      ...value,
+      id: normalizeBackendId(value?.id),
+      localId: value?.localId || crypto.randomUUID(),
+      demandaEspontanea: normalizeYesNo(value?.demandaEspontanea, "sim"),
+      problemaSaude: normalizeBoolean(value?.problemaSaude, false),
+      alergia: normalizeBoolean(value?.alergia, false),
+      medicamentoControlado: normalizeBoolean(value?.medicamentoControlado, false),
+      usaSpa: normalizeBoolean(value?.usaSpa, false),
+      outraAlergia: normalizeBoolean(value?.outraAlergia, false),
+      desligamentos: value?.desligamentos?.length ? renumberDischarges(value.desligamentos) : [createDischarge(1)],
+      evolucoes: value?.evolucoes || [],
+      encaminhamentos: value?.encaminhamentos || []
+    };
+  }
+
+  function normalizeBackendId(id) {
+    if (typeof id === "number") {
+      return id;
+    }
+
+    if (typeof id === "string" && /^\d+$/.test(id)) {
+      return Number(id);
+    }
+
+    return null;
+  }
+
+  function normalizeBoolean(value, fallback) {
+    if (typeof value === "boolean") {
+      return value;
+    }
+
+    if (value === "sim" || value === "true") {
+      return true;
+    }
+
+    if (value === "nao" || value === "false") {
+      return false;
+    }
+
+    return fallback;
+  }
+
+  function normalizeYesNo(value, fallback) {
+    if (value === true || value === "true" || value === "sim") {
+      return "sim";
+    }
+
+    if (value === false || value === "false" || value === "nao") {
+      return "nao";
+    }
+
+    return fallback;
+  }
+
+  function updateField(event) {
+    const { name, value, type, checked } = event.target;
+    setGuest((current) => ({
+      ...current,
+      [name]: type === "checkbox" ? checked : value === "true" ? true : value === "false" ? false : value
+    }));
+  }
+
+  function updateDischarge(index, field, value) {
+    setGuest((current) => ({
+      ...current,
+      desligamentos: current.desligamentos.map((item, itemIndex) =>
+        itemIndex === index ? { ...item, [field]: value } : item
+      )
+    }));
+  }
+
+  function addDischarge() {
+    setGuest((current) => ({
+      ...current,
+      desligamentos: [...current.desligamentos, createDischarge(current.desligamentos.length + 1)]
+    }));
+  }
+
+  function removeDischarge(id) {
+    setGuest((current) => ({
+      ...current,
+      desligamentos: renumberDischarges(current.desligamentos.filter((item) => item.id !== id))
+    }));
+  }
+
+  function updateList(collection, id, field, value) {
+    setGuest((current) => ({
+      ...current,
+      [collection]: current[collection].map((item) => (item.id === id ? { ...item, [field]: value } : item))
+    }));
+  }
+
+  function addListItem(collection, factory) {
+    setGuest((current) => ({
+      ...current,
+      [collection]: [...current[collection], factory()]
+    }));
+  }
+
+  function removeListItem(collection, id) {
+    setGuest((current) => ({
+      ...current,
+      [collection]: current[collection].filter((item) => item.id !== id)
+    }));
+  }
+
+  function saveLocal() {
+    const record = {
+      ...guest,
+      id: normalizeBackendId(guest.id),
+      localId: guest.localId || crypto.randomUUID(),
+      protocolo: guest.protocolo || `FB-${new Date().getFullYear()}-${String(records.length + 1).padStart(3, "0")}`
+    };
+
+    persistRecord(record);
+  }
+
+  function persistRecord(record) {
+    setGuest(record);
+    setRecords((current) => {
+      const recordKey = getRecordKey(record);
+      const exists = current.some((item) => getRecordKey(item) === recordKey);
+      return exists ? current.map((item) => (getRecordKey(item) === recordKey ? record : item)) : [record, ...current];
     });
-  }, [records, searchTerm]);
-
-  function validateSection() {
-    const errors = {};
-    
-    if (currentSection === "inicio") {
-      if (!guest.dataAcolhimento) errors.dataAcolhimento = true;
-    } else if (currentSection === "pessoais") {
-      if (!guest.nome || guest.nome.trim() === "") errors.nome = true;
-    }
-    
-    setValidationErrors(errors);
-    const hasErrors = Object.keys(errors).length > 0;
-    
-    if (hasErrors) {
-      showToast("Preencha os campos obrigatórios marcados em vermelho.", "error");
-    }
-    
-    return !hasErrors;
+    setSelectedId(getRecordKey(record));
+    setStatus("Salvo no navegador");
   }
 
-  function nextSection() {
-    if (validateSection()) {
-      setCurrentSection(sections[Math.min(selectedIndex + 1, sections.length - 1)].id);
-      setValidationErrors({});
-    }
-  }
+  async function submitToApi() {
+    const hasBackendId = Number.isInteger(normalizeBackendId(guest.id));
+    const payload = sanitizePayload(guest);
+    setApiStatus("Enviando...");
 
-  function previousSection() {
-    setCurrentSection(sections[Math.max(selectedIndex - 1, 0)].id);
-    setValidationErrors({});
+    try {
+      const response = await fetch(`${API_URL}/hospedes`, {
+        method: hasBackendId ? "PUT" : "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(payload)
+      });
+
+      if (!response.ok) {
+        throw new Error(`HTTP ${response.status}`);
+      }
+
+      const saved = normalizeGuest({ ...(await response.json()), localId: guest.localId });
+      setApiStatus("Enviado para o back");
+      persistRecord(saved);
+    } catch (error) {
+      setApiStatus("Back indisponível; salvo localmente");
+      saveLocal();
+    }
   }
 
   function handleLoadRecord(record) {
@@ -171,10 +345,31 @@ function App() {
             </nav>
           </section>
 
+          <section className="side-panel search-panel">
+            <div className="section-title compact">
+              <span>Filtro</span>
+              <strong>Buscar registros</strong>
+            </div>
+            <div className="search-grid">
+              <Field label="Nome">
+                <input name="nome" value={filters.nome} onChange={updateFilter} />
+              </Field>
+              <Field label="CPF">
+                <input name="cpf" value={filters.cpf} onChange={updateFilter} />
+              </Field>
+              <Field label="Protocolo">
+                <input name="protocolo" value={filters.protocolo} onChange={updateFilter} />
+              </Field>
+              <Field label="Data de acolhimento">
+                <input type="date" name="dataAcolhimento" value={filters.dataAcolhimento} onChange={updateFilter} />
+              </Field>
+            </div>
+          </section>
+
           <section className="side-panel records-panel">
             <div className="section-title compact">
               <span>Registros locais</span>
-              <strong>{records.length}</strong>
+              <strong>{filteredRecords.length}/{records.length}</strong>
             </div>
             
             <div className="utility-buttons">
@@ -210,12 +405,8 @@ function App() {
             </div>
             
             <div className="records-list">
-              {filteredRecords.length === 0 && (
-                <p className="muted">
-                  {records.length === 0 ? "Nenhum hóspede salvo ainda." : "Nenhum hóspede encontrado."}
-                </p>
-              )}
-              {filteredRecords.map((record) => (
+              {records.length === 0 && <p className="muted">Nenhum hóspede salvo ainda.</p>}
+              {records.map((record) => (
                 <article key={getRecordKey(record)} className={getRecordKey(record) === selectedId ? "record-card selected" : "record-card"}>
                   <button type="button" onClick={() => handleLoadRecord(record)}>
                     <strong>{record.nome || "Sem nome"}</strong>
@@ -240,19 +431,18 @@ function App() {
               Voltar
             </button>
             <div className="actions-right">
-              <button className="ghost-button" type="button" onClick={saveLocal}>
+              <button className="ghost-button" type="button" onClick={saveLocal} disabled={isSubmitting}>
                 Salvar rascunho
               </button>
-              <button className="ghost-button" type="button" onClick={() => window.print()}>
+              <button className="ghost-button" type="button" onClick={() => window.print()} disabled={isSubmitting}>
                 Imprimir ficha
               </button>
               {selectedIndex < sections.length - 1 ? (
-                <button className="primary-button" type="button" onClick={nextSection}>
+                <button className="primary-button" type="button" onClick={nextSection} disabled={isSubmitting}>
                   Avançar
                 </button>
               ) : (
-                <button className="primary-button" type="button" onClick={handleSubmit} disabled={loading}>
-                  {loading && <span className="spinner" />}
+                <button className="primary-button" type="button" onClick={submitToApi}>
                   Concluir cadastro
                 </button>
               )}
@@ -313,7 +503,7 @@ function App() {
           <>
             <SectionHeader eyebrow="Ficha de acolhimento" title="Informações iniciais" />
             <div className="form-grid">
-              <Field label="Data de acolhimento *" hasError={validationErrors.dataAcolhimento}>
+              <Field label="Data de acolhimento">
                 <input type="date" name="dataAcolhimento" value={guest.dataAcolhimento} onChange={updateField} />
               </Field>
               <Field label="Data de retorno">
@@ -330,8 +520,8 @@ function App() {
                 trueValue="sim"
                 falseValue="nao"
               />
-              <Field label="Motivo da entrada" full>
-                <textarea name="motivoEntrada" rows="4" value={guest.motivoEntrada} onChange={updateField} />
+              <Field label="Motivo da entrada" full error={errors.motivoEntrada}>
+                <textarea className={errors.motivoEntrada ? "input-error" : ""} name="motivoEntrada" rows="4" value={guest.motivoEntrada} onChange={updateField} />
               </Field>
             </div>
           </>
@@ -341,7 +531,7 @@ function App() {
           <>
             <SectionHeader eyebrow="Identificação" title="Dados pessoais" />
             <div className="form-grid">
-              <Field label="Nome *" full hasError={validationErrors.nome}>
+              <Field label="Nome" full>
                 <input name="nome" value={guest.nome} onChange={updateField} />
               </Field>
               <Field label="Data de nascimento">
@@ -385,8 +575,8 @@ function App() {
               <Field label="RG">
                 <input name="rg" value={guest.rg} onChange={updateField} />
               </Field>
-              <Field label="CPF">
-                <input name="cpf" value={guest.cpf} onChange={updateField} />
+              <Field label="CPF" error={errors.cpf}>
+                <input className={errors.cpf ? "input-error" : ""} name="cpf" value={guest.cpf} onChange={updateField} />
               </Field>
               <Field label="Título eleitoral" full>
                 <input name="tituloEleitoral" value={guest.tituloEleitoral} onChange={updateField} />
