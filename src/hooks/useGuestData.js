@@ -11,6 +11,9 @@ export function createDischarge(number) {
     numero: number,
     data: "",
     motivo: "",
+    condicoesSaida: "",
+    encaminhamentoRealizado: "",
+    observacoesFinais: "",
     devolveuRoupas: false,
     levouDocumentos: false,
     temLesoes: false,
@@ -33,6 +36,7 @@ export function createEvolution() {
     id: crypto.randomUUID(),
     data: new Date().toISOString().slice(0, 10),
     texto: "",
+    observacoes: "",
     tecnico: ""
   };
 }

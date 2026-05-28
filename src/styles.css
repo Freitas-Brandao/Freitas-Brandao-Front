@@ -200,7 +200,6 @@ select:focus {
 
 .side-panel,
 .search-panel,
-.records-panel,
 .form-panel,
 .actions-bar {
   border: 1px solid rgba(106, 132, 153, 0.18);
@@ -210,8 +209,7 @@ select:focus {
 }
 
 .side-panel,
-.search-panel,
-.records-panel {
+.search-panel {
   padding: 22px;
 }
 
@@ -350,28 +348,8 @@ select:focus {
   font-weight: 800;
 }
 
-.search-panel .section-title.compact,
-.records-panel .section-title.compact {
+.search-panel .section-title.compact {
   margin: 0;
-}
-
-.records-heading {
-  display: flex;
-  justify-content: space-between;
-  gap: 16px;
-  align-items: center;
-}
-
-.records-count {
-  display: inline-flex;
-  min-width: 42px;
-  min-height: 34px;
-  align-items: center;
-  justify-content: center;
-  padding: 6px 10px;
-  border-radius: 999px;
-  background: #edf7f4;
-  color: var(--green);
 }
 
 .form-panel {
@@ -962,13 +940,8 @@ button:focus-visible {
   }
 
   .side-panel,
-  .search-panel,
-  .records-panel {
+  .search-panel {
     padding: 18px;
-  }
-
-  .records-heading {
-    display: grid;
   }
 
   .records-list {
@@ -1019,7 +992,6 @@ button:focus-visible {
 
   .sidebar,
   .search-panel,
-  .records-panel,
   .modal-backdrop,
   .actions-bar {
     display: none;
@@ -1039,47 +1011,6 @@ button:focus-visible {
 /* --- NOVOS ESTILOS: BUSCA, MODAL, TOASTS, LOADING E UTILITÁRIOS --- */
 
 /* Painel de Utilitários (Sync / Backup) */
-.utility-buttons {
-  display: grid;
-  gap: 10px;
-  margin-bottom: 18px;
-  padding-bottom: 18px;
-  border-bottom: 1px dashed rgba(106, 132, 153, 0.3);
-}
-
-.backup-actions {
-  display: flex;
-  gap: 10px;
-}
-
-.backup-actions button {
-  flex: 1;
-}
-
-/* Barra de Pesquisa */
-.search-container {
-  position: relative;
-  margin-bottom: 14px;
-}
-
-.search-input {
-  padding-left: 38px;
-  font-size: 0.9rem;
-  border-radius: 12px;
-  border: 1px solid rgba(106, 132, 153, 0.22);
-  background-color: #ffffff;
-}
-
-.search-icon {
-  position: absolute;
-  left: 14px;
-  top: 50%;
-  transform: translateY(-50%);
-  color: var(--muted);
-  pointer-events: none;
-  font-weight: bold;
-}
-
 /* Modal de Confirmação */
 .modal-overlay {
   position: fixed;
