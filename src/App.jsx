@@ -1,8 +1,11 @@
-import { useMemo, useState, useRef } from "react";
+import { useEffect, useMemo, useState } from "react";
 import prefeituraLogo from "./assets/prefeitura-aracaju.png";
 import assistenciaLogo from "./assets/assistencia-social.jfif";
-import { Field, RadioGroup, SectionHeader, ListToolbar, ReviewItem } from "./components/ui/FormElements";
-import { useGuestData, getRecordKey, createEvolution, createReferral } from "./hooks/useGuestData";
+import { emptyGuest, getRecordKey, createEvolution, createReferral } from "./hooks/useGuestData";
+
+const API_URL = import.meta.env.VITE_API_URL || "http://localhost:8080/api";
+const STORAGE_KEY = "freitas-brandao-hospedes";
+const DRAFT_KEY = "freitas-brandao-rascunho";
 
 const sections = [
   { id: "inicio", label: "Iniciais" },
@@ -39,24 +42,6 @@ function renumberDischarges(items) {
     id: item.id || crypto.randomUUID(),
     numero: index + 1
   }));
-}
-
-function createEvolution() {
-  return {
-    id: crypto.randomUUID(),
-    data: new Date().toISOString().slice(0, 10),
-    texto: "",
-    observacoes: "",
-    tecnico: ""
-  };
-}
-
-function createReferral() {
-  return {
-    id: crypto.randomUUID(),
-    mes: "",
-    encaminhamento: ""
-  };
 }
 
 function cleanCPF(value) {
@@ -552,7 +537,6 @@ function App() {
     setSelectedId(getRecordKey(record));
     setStatus("Registro carregado");
     setCurrentSection("inicio");
-    setValidationErrors({});
   }
 
   function openGuestDetails(record) {
@@ -581,7 +565,6 @@ function App() {
     setSelectedId("");
     setStatus("Novo rascunho");
     setCurrentSection("inicio");
-    setValidationErrors({});
   }
 
   function requestDeleteRecord(record) {
@@ -1088,7 +1071,7 @@ function App() {
       <main className="workspace">
         <aside className="sidebar">
           <section className="side-panel">
-            <button className="primary-button full-button" type="button" onClick={handleNewRecord}>
+            <button className="primary-button full-button" type="button" onClick={newRecord}>
               Novo hóspede
             </button>
             <div className="progress-track">
@@ -1100,12 +1083,7 @@ function App() {
                   key={section.id}
                   className={`step-item ${section.id === currentSection ? "active" : ""}`}
                   type="button"
-                  onClick={() => {
-                    if (validateSection()) {
-                      setCurrentSection(section.id);
-                      setValidationErrors({});
-                    }
-                  }}
+                  onClick={() => setCurrentSection(section.id)}
                 >
                   <span>{String(index + 1).padStart(2, "0")}</span>
                   {section.label}
@@ -1119,7 +1097,7 @@ function App() {
           <section className="search-panel">
             <div className="section-title compact">
               <span>Buscar hóspedes</span>
-              <strong>Filtros de registros locais</strong>
+              <strong>{hasActiveFilters ? `${filteredRecords.length}/${records.length} resultado(s)` : `${records.length} registro(s)`}</strong>
             </div>
             <form className="filters-panel" aria-label="Filtros de hóspedes salvos" onSubmit={submitFilters}>
               <label className="filter-field">
@@ -1146,49 +1124,6 @@ function App() {
                 Limpar filtros
               </button>
             </form>
-          </section>
-
-          <section className="records-panel">
-            <div className="section-title compact records-heading">
-              <div>
-                <span>Hóspedes salvos</span>
-                <strong>Registros locais</strong>
-              </div>
-              <strong className="records-count">{hasActiveFilters ? `${filteredRecords.length}/${records.length}` : records.length}</strong>
-            </div>
-            
-            <div className="utility-buttons">
-              <button className="ghost-button compact-button full-button" type="button" onClick={syncPending} disabled={loading}>
-                🔄 Sincronizar Todos
-              </button>
-              <div className="backup-actions">
-                <button className="ghost-button compact-button" type="button" onClick={exportData}>
-                  📥 Exportar
-                </button>
-                <button className="ghost-button compact-button" type="button" onClick={() => fileInputRef.current?.click()}>
-                  📤 Importar
-                </button>
-                <input
-                  type="file"
-                  accept=".json"
-                  ref={fileInputRef}
-                  style={{ display: "none" }}
-                  onChange={importData}
-                />
-              </div>
-            </div>
-
-            <div className="search-container">
-              <span className="search-icon">🔍</span>
-              <input
-                type="text"
-                className="search-input"
-                placeholder="Buscar por nome ou CPF..."
-                value={searchTerm}
-                onChange={(e) => setSearchTerm(e.target.value)}
-              />
-            </div>
-            
             <div className="records-list">
               {records.length === 0 && <p className="muted">Nenhum hóspede salvo ainda.</p>}
               {records.length > 0 && filteredRecords.length === 0 && (
@@ -1268,8 +1203,8 @@ function App() {
                 trueValue="sim"
                 falseValue="nao"
               />
-              <Field label="Motivo da entrada" full error={errors.motivoEntrada}>
-                <textarea className={errors.motivoEntrada ? "input-error" : ""} name="motivoEntrada" rows="4" value={guest.motivoEntrada} onChange={updateField} />
+              <Field label="Motivo da entrada" full>
+                <textarea name="motivoEntrada" rows="4" value={guest.motivoEntrada} onChange={updateField} />
               </Field>
             </div>
           </>
