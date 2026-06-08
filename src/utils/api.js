@@ -1,13 +1,11 @@
-const API_URL = import.meta.env.VITE_API_URL || "http://localhost:8080/api";
-const AUTH_USER = "admin";
-const AUTH_PASS = "admin123";
+export const API_URL = import.meta.env.VITE_API_URL || "http://localhost:8080/api";
 
 export async function fetchComAuth(endpoint, options = {}) {
-  const tokenBase64 = btoa(`${AUTH_USER}:${AUTH_PASS}`);
+  const tokenBase64 = localStorage.getItem("authToken");
   const isFormData = options.body instanceof FormData;
   
   const headers = {
-    "Authorization": `Basic ${tokenBase64}`,
+    ...(tokenBase64 ? { "Authorization": `Basic ${tokenBase64}` } : {}),
     ...(isFormData ? {} : { "Content-Type": "application/json" }),
     ...options.headers
   };

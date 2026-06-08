@@ -1,4 +1,5 @@
 import { useState, useEffect } from "react";
+import { fetchComAuth } from "../utils/api";
 
 export default function Dashboard() {
   const [totalAcolhidos, setTotalAcolhidos] = useState(0);
@@ -7,15 +8,8 @@ export default function Dashboard() {
   useEffect(() => {
     async function carregarDadosVitais() {
       try {
-        const token = localStorage.getItem("authToken");
-        const resposta = await fetch("http://localhost:8080/api/pessoas?size=1", {
-          headers: { "Authorization": `Basic ${token}` }
-        });
-        
-        if (resposta.ok) {
-          const dados = await resposta.json();
-          setTotalAcolhidos(dados.totalElements || 0); 
-        }
+        const dados = await fetchComAuth("/pessoas?size=1");
+        setTotalAcolhidos(dados.totalElements || 0);
       } catch (error) {
         console.error("Erro ao carregar dashboard:", error);
       } finally {

@@ -35,7 +35,7 @@ export default function ListaHospedes() {
       await fetchComAuth(`/pessoas/${selectedRecord.id}/desligamentos`, {
         method: "POST",
         body: JSON.stringify({
-          dataDesligamento: dischargeDate,
+          data: dischargeDate,
           motivo: dischargeReason
         })
       });

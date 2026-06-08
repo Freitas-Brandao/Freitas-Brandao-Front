@@ -1,5 +1,6 @@
 import { useState } from "react";
 import { useNavigate } from "react-router-dom";
+import { API_URL } from "../utils/api";
 
 export default function Login() {
   const [usuario, setUsuario] = useState("");
@@ -16,7 +17,7 @@ export default function Login() {
     const tokenBase64 = btoa(`${usuario}:${senha}`);
 
     try {
-      const resposta = await fetch("http://localhost:8080/api/auth/me", {
+      const resposta = await fetch(`${API_URL}/auth/me`, {
         headers: {
           "Authorization": `Basic ${tokenBase64}`
         }
