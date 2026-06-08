@@ -1,5 +1,6 @@
 import { useState, useEffect } from "react";
 import { fetchComAuth } from "../utils/api";
+import { formatDateBR } from "../utils/formatters";
 
 const DRAFT_KEY = "freitas-brandao-rascunho";
 
@@ -108,6 +109,12 @@ function sanitizePayload(value) {
   };
 }
 
+function formatFileSize(bytes) {
+  if (!Number.isFinite(bytes)) return "";
+  if (bytes < 1024 * 1024) return `${Math.max(1, Math.round(bytes / 1024))} KB`;
+  return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
+}
+
 export default function CadastroHospede() {
   const [currentSection, setCurrentSection] = useState("inicio");
   const [guest, setGuest] = useState(() => {
@@ -121,6 +128,7 @@ export default function CadastroHospede() {
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [fieldErrors, setFieldErrors] = useState({});
   const [notification, setNotification] = useState(null);
+  const [pdfDocuments, setPdfDocuments] = useState([]);
 
   useEffect(() => {
     localStorage.setItem(DRAFT_KEY, JSON.stringify(guest));
@@ -158,17 +166,71 @@ export default function CadastroHospede() {
     return true;
   }
 
+  function handlePdfDocumentsChange(event) {
+    const selectedFiles = Array.from(event.target.files || []);
+    const acceptedDocuments = [];
+    let hasRejectedFile = false;
+
+    selectedFiles.forEach((file) => {
+      const isPdf = file.type === "application/pdf" || file.name.toLowerCase().endsWith(".pdf");
+      const isWithinLimit = file.size <= 20 * 1024 * 1024;
+
+      if (!isPdf || !isWithinLimit) {
+        hasRejectedFile = true;
+        return;
+      }
+
+      acceptedDocuments.push({
+        id: crypto.randomUUID(),
+        file,
+        name: file.name,
+        size: file.size
+      });
+    });
+
+    if (acceptedDocuments.length > 0) {
+      setPdfDocuments((current) => [...current, ...acceptedDocuments]);
+    }
+
+    if (hasRejectedFile) {
+      setNotification({ type: "error", message: "Anexe apenas PDFs de ate 20 MB." });
+    }
+
+    event.target.value = "";
+  }
+
+  function removePdfDocument(documentId) {
+    setPdfDocuments((current) => current.filter((document) => document.id !== documentId));
+  }
+
+  async function uploadPdfDocuments(pessoaId) {
+    await Promise.all(pdfDocuments.map((document) => {
+      const formData = new FormData();
+      formData.append("arquivo", document.file);
+      formData.append("tipo", "PDF");
+
+      return fetchComAuth(`/pessoas/${pessoaId}/documentos`, {
+        method: "POST",
+        body: formData
+      });
+    }));
+  }
+
   async function submitToApi() {
     if (isSubmitting || !validateGuest()) return;
     setIsSubmitting(true);
     try {
       const payload = sanitizePayload(guest);
-      await fetchComAuth("/pessoas", {
+      const pessoaSalva = await fetchComAuth("/pessoas", {
         method: "POST",
         body: JSON.stringify(payload)
       });
+      if (pdfDocuments.length > 0 && pessoaSalva?.id) {
+        await uploadPdfDocuments(pessoaSalva.id);
+      }
       setNotification({ type: "success", message: "Cadastro concluído com sucesso!" });
       setGuest({ ...emptyGuest });
+      setPdfDocuments([]);
       setCurrentSection("inicio");
     } catch (error) {
       setNotification({ type: "error", message: "Erro ao salvar no servidor corporativo." });
@@ -246,6 +308,29 @@ export default function CadastroHospede() {
               <span>RG</span>
               <input name="rg" value={guest.rg} onChange={updateField} />
             </label>
+            <div className="field field-full">
+              <span>Documentos complementares em PDF</span>
+              <label className="pdf-upload-box">
+                <input type="file" accept="application/pdf,.pdf" multiple onChange={handlePdfDocumentsChange} />
+                <strong>Adicionar documentos em PDF</strong>
+                <small>Voce pode anexar varios documentos complementares. Limite de 20 MB por arquivo.</small>
+              </label>
+              {pdfDocuments.length > 0 && (
+                <div className="pdf-document-list">
+                  {pdfDocuments.map((document) => (
+                    <article key={document.id} className="pdf-document-item">
+                      <div>
+                        <strong>{document.name}</strong>
+                        <span>{formatFileSize(document.size)}</span>
+                      </div>
+                      <button type="button" className="danger-button compact-button" onClick={() => removePdfDocument(document.id)}>
+                        Excluir
+                      </button>
+                    </article>
+                  ))}
+                </div>
+              )}
+            </div>
           </div>
         )}
 
@@ -289,7 +374,7 @@ export default function CadastroHospede() {
         {currentSection === "revisao" && (
           <div className="review-grid">
             <div className="review-card"><span>Nome</span><strong>{guest.nome}</strong></div>
-            <div className="review-card"><span>Acolhimento</span><strong>{guest.dataAcolhimento}</strong></div>
+            <div className="review-card"><span>Acolhimento</span><strong>{formatDateBR(guest.dataAcolhimento)}</strong></div>
             <div className="review-card"><span>CPF</span><strong>{guest.cpf}</strong></div>
           </div>
         )}

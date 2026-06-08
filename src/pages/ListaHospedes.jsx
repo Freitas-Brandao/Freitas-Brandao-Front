@@ -1,5 +1,6 @@
 import { useState, useEffect } from "react";
 import { fetchComAuth } from "../utils/api";
+import { formatDateBR } from "../utils/formatters";
 
 export default function ListaHospedes() {
   const [records, setRecords] = useState([]);
@@ -48,7 +49,7 @@ export default function ListaHospedes() {
 
   return (
     <div className="search-panel" style={{ marginTop: 0 }}>
-      <form className="filters-panel" style={{ gridTemplateColumns: "1fr 1fr auto" }} onSubmit={executarBusca}>
+      <form className="filters-panel hospedes-filters" onSubmit={executarBusca}>
         <label className="filter-field">
           <span>Nome</span>
           <input value={filters.nome} onChange={(e) => setFilters({ ...filters, nome: e.target.value })} placeholder="Buscar por nome" />
@@ -57,17 +58,18 @@ export default function ListaHospedes() {
           <span>CPF</span>
           <input value={filters.cpf} onChange={(e) => setFilters({ ...filters, cpf: e.target.value })} placeholder="Buscar por CPF" />
         </label>
-        <button type="submit" className="primary-button" style={{ height: "40px" }}>Pesquisar</button>
+        <button type="submit" className="primary-button search-submit">Pesquisar</button>
       </form>
 
-      <div className="records-list" style={{ maxHeight: "none", gridTemplateColumns: "1fr" }}>
+      <div className="records-list hospedes-list">
         {records.map((r) => (
           <article key={r.id} className="record-card">
-            <div>
-              <strong>{r.nome}</strong>
-              <span>{r.cpf || "Sem CPF informado"}</span>
+            <div className="record-card-info">
+              <strong>{r.nome || "Nome nao informado"}</strong>
+              <span>CPF: {r.cpf || "Sem CPF informado"}</span>
+              {r.dataAcolhimento && <small>Acolhimento: {formatDateBR(r.dataAcolhimento)}</small>}
             </div>
-            <div style={{ display: "flex", gap: "8px" }}>
+            <div className="record-card-actions">
               <button type="button" className="ghost-button compact-button" onClick={() => setSelectedRecord(r)}>Detalhes</button>
               <button type="button" className="primary-button compact-button" onClick={() => { setSelectedRecord(r); setShowDischarge(true); }}>Registrar Saída</button>
             </div>
@@ -81,7 +83,7 @@ export default function ListaHospedes() {
             <h2 className="modal-title">{selectedRecord.nome}</h2>
             <div className="detail-list">
               <p><strong>CPF:</strong> {selectedRecord.cpf}</p>
-              <p><strong>Data de Acolhimento:</strong> {selectedRecord.dataAcolhimento}</p>
+              <p><strong>Data de Acolhimento:</strong> {formatDateBR(selectedRecord.dataAcolhimento)}</p>
               <p><strong>Condições de Saúde:</strong> {selectedRecord.condicoesSaude || "Nenhuma"}</p>
             </div>
             <div className="modal-actions" style={{ marginTop: "20px" }}>
@@ -94,7 +96,7 @@ export default function ListaHospedes() {
       {showDischarge && (
         <div className="modal-backdrop">
           <form className="modal-container" onSubmit={registrarSaida}>
-            <h2 className="modal-title">Desligamento de Hóspede</h2>
+            <h2 className="modal-title">Desligamento de Acolhido</h2>
             <div className="form-grid single" style={{ marginBottom: "15px" }}>
               <label className="field">
                 <span>Data de Saída</span>

@@ -4,10 +4,11 @@ const AUTH_PASS = "admin123";
 
 export async function fetchComAuth(endpoint, options = {}) {
   const tokenBase64 = btoa(`${AUTH_USER}:${AUTH_PASS}`);
+  const isFormData = options.body instanceof FormData;
   
   const headers = {
-    "Content-Type": "application/json",
     "Authorization": `Basic ${tokenBase64}`,
+    ...(isFormData ? {} : { "Content-Type": "application/json" }),
     ...options.headers
   };
 

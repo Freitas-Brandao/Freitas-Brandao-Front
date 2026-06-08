@@ -1,7 +1,7 @@
 import { useState, useEffect } from "react";
 
 export default function Dashboard() {
-  const [totalHospedes, setTotalHospedes] = useState(0);
+  const [totalAcolhidos, setTotalAcolhidos] = useState(0);
   const [carregando, setCarregando] = useState(true);
 
   useEffect(() => {
@@ -14,7 +14,7 @@ export default function Dashboard() {
         
         if (resposta.ok) {
           const dados = await resposta.json();
-          setTotalHospedes(dados.totalElements || 0); 
+          setTotalAcolhidos(dados.totalElements || 0); 
         }
       } catch (error) {
         console.error("Erro ao carregar dashboard:", error);
@@ -38,15 +38,8 @@ export default function Dashboard() {
       ) : (
         <div className="review-grid" style={{ marginTop: "24px" }}>
           <article className="review-card" style={{ borderLeft: "4px solid var(--blue)" }}>
-            <span>Total de Cadastros no Sistema</span>
-            <strong style={{ fontSize: "2rem", color: "var(--blue-dark)" }}>{totalHospedes}</strong>
-          </article>
-          
-          <article className="review-card" style={{ borderLeft: "4px solid var(--green)" }}>
-            <span>Hóspedes Ativos (Acolhidos)</span>
-            {/* Como ainda não temos o filtro específico no back, coloquei um texto placeholder didático */}
-            <strong style={{ fontSize: "2rem", color: "var(--green)" }}>--</strong>
-            <p className="muted" style={{ fontSize: "0.8rem", margin: 0 }}>*Requer filtro no backend</p>
+            <span>Total de Acolhidos no Sistema</span>
+            <strong style={{ fontSize: "2rem", color: "var(--blue-dark)" }}>{totalAcolhidos}</strong>
           </article>
 
           <article className="review-card" style={{ borderLeft: "4px solid var(--gold)" }}>

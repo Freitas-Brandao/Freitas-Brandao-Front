@@ -328,16 +328,6 @@ select:focus {
   box-shadow: inset 0 0 0 1px rgba(24, 127, 103, 0.11);
 }
 
-.record-card button:first-child {
-  display: grid;
-  gap: 4px;
-  border: 0;
-  background: transparent;
-  color: inherit;
-  text-align: left;
-  padding: 0;
-}
-
 .record-card span {
   color: var(--muted);
   font-size: 0.92rem;
@@ -346,6 +336,47 @@ select:focus {
 .record-card small {
   color: var(--green);
   font-weight: 800;
+}
+
+.hospedes-filters {
+  grid-template-columns: minmax(220px, 1fr) minmax(180px, 0.8fr) auto;
+}
+
+.search-submit {
+  min-width: 132px;
+  min-height: 48px;
+  align-self: end;
+  border-radius: 999px;
+  white-space: nowrap;
+}
+
+.hospedes-list {
+  grid-template-columns: 1fr;
+  max-height: none;
+}
+
+.record-card-info {
+  display: grid;
+  gap: 4px;
+  min-width: 0;
+}
+
+.record-card-info strong,
+.record-card-info span,
+.record-card-info small {
+  overflow-wrap: anywhere;
+}
+
+.record-card-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  justify-content: flex-end;
+}
+
+.record-card-actions .compact-button {
+  min-width: 110px;
+  white-space: nowrap;
 }
 
 .search-panel .section-title.compact {
@@ -468,6 +499,60 @@ select:focus {
   border-radius: 14px;
   background: #f8fbfd;
   font-weight: 700;
+}
+
+.pdf-upload-box {
+  display: grid;
+  gap: 6px;
+  padding: 18px;
+  border: 1px dashed rgba(0, 91, 150, 0.36);
+  border-radius: 14px;
+  background: #f8fbfd;
+  color: var(--blue-dark);
+  cursor: pointer;
+}
+
+.pdf-upload-box input {
+  width: 100%;
+  padding: 0;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  box-shadow: none;
+}
+
+.pdf-upload-box small {
+  color: var(--muted);
+  font-weight: 700;
+}
+
+.pdf-document-list {
+  display: grid;
+  gap: 10px;
+  margin-top: 10px;
+}
+
+.pdf-document-item {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 12px;
+  align-items: center;
+  padding: 12px;
+  border: 1px solid rgba(106, 132, 153, 0.18);
+  border-radius: 14px;
+  background: #ffffff;
+}
+
+.pdf-document-item strong,
+.pdf-document-item span {
+  display: block;
+  overflow-wrap: anywhere;
+}
+
+.pdf-document-item span {
+  color: var(--muted);
+  font-size: 0.86rem;
+  font-weight: 800;
 }
 
 .health-row {

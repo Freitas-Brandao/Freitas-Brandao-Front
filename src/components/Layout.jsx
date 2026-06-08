@@ -43,11 +43,11 @@ export default function Layout() {
               </Link>
               <Link to="/cadastro" className={`step-item ${location.pathname === "/cadastro" ? "active" : ""}`} style={linkStyle}>
                 <span><UserPlus size={20} strokeWidth={2.5} /></span>
-                Novo Hóspede
+                Novo Acolhido
               </Link>
               <Link to="/hospedes" className={`step-item ${location.pathname === "/hospedes" ? "active" : ""}`} style={linkStyle}>
                 <span><Users size={20} strokeWidth={2.5} /></span>
-                Lista de Hóspedes
+                Lista de Acolhidos
               </Link>
             </nav>
           </section>

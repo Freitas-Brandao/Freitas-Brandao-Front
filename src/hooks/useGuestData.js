@@ -307,7 +307,7 @@ export function useGuestData(showToast) {
 
   async function syncPending() {
     if (records.length === 0) {
-      showToast("Nenhum hóspede para sincronizar.", "info");
+      showToast("Nenhum acolhido para sincronizar.", "info");
       return;
     }
     

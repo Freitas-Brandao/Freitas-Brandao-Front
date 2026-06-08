@@ -12,6 +12,16 @@ export function calculateAge(birthDateString) {
   return age >= 0 ? String(age) : "";
 }
 
+export function formatDateBR(value) {
+  if (!value) return "";
+  const [datePart] = String(value).split("T");
+  const [year, month, day] = datePart.split("-");
+
+  if (!year || !month || !day) return String(value);
+
+  return `${day.padStart(2, "0")}/${month.padStart(2, "0")}/${year}`;
+}
+
 export function formatCPF(value) {
   const digits = value.replace(/\D/g, "").slice(0, 11);
   let formatted = digits;
