@@ -108,7 +108,7 @@ function sanitizePayload(value) {
     mae: value.mae ? String(value.mae).trim() : null,
     pai: value.pai ? String(value.pai).trim() : null,
     referenciasSociofamiliares: value.referenciasFamiliares ? String(value.referenciasFamiliares).trim() : null,
-    genero: "NAO_INFORMADO",
+    genero: "OUTRO",
     telefone: value.telefoneContato ? String(value.telefoneContato).trim() : null,
     cpf: value.cpf ? cleanCPF(value.cpf) : null,
     rg: value.rg ? String(value.rg).trim() : null,
