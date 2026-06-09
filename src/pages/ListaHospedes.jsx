@@ -15,6 +15,7 @@ export default function ListaHospedes() {
   const [showEdit, setShowEdit] = useState(false);
   const [editForm, setEditForm] = useState(null);
   const [isSavingEdit, setIsSavingEdit] = useState(false);
+  const [pdfUploadQueue, setPdfUploadQueue] = useState([]);
 
   function cleanCPF(value) {
     return String(value || "").replace(/\D/g, "");
@@ -186,6 +187,7 @@ export default function ListaHospedes() {
     setDetails(null);
     setShowEdit(false);
     setEditForm(null);
+    setPdfUploadQueue([]);
     setDetailsLoading(true);
     try {
       const [pessoa, beneficios, referencias, desligamentos, evolucoes, encaminhamentos, documentos] = await Promise.all([
@@ -215,6 +217,7 @@ export default function ListaHospedes() {
   function abrirEdicao() {
     if (!details?.pessoa) return;
     setEditForm(pessoaToEditForm(details.pessoa));
+    setPdfUploadQueue([]);
     setShowEdit(true);
   }
 
@@ -241,7 +244,21 @@ export default function ListaHospedes() {
         method: "PUT",
         body: JSON.stringify(editFormToPayload(editForm))
       });
+      if (pdfUploadQueue.length > 0) {
+        await Promise.all(pdfUploadQueue.map((documento) => {
+          const formData = new FormData();
+          formData.append("arquivo", documento.file);
+          formData.append("tipo", "PDF");
+
+          return fetchComAuth(`/pessoas/${selectedRecord.id}/documentos`, {
+            method: "POST",
+            body: formData
+          });
+        }));
+      }
+      const documentos = await fetchComAuth(`/pessoas/${selectedRecord.id}/documentos`).catch(() => []);
       setDetails((current) => current ? { ...current, pessoa: pessoaAtualizada } : current);
+      setDetails((current) => current ? { ...current, documentos } : current);
       setSelectedRecord((current) => current ? {
         ...current,
         nome: pessoaAtualizada.nome,
@@ -250,6 +267,7 @@ export default function ListaHospedes() {
         ultimaDataSaida: pessoaAtualizada.ultimaDataSaida
       } : current);
       setShowEdit(false);
+      setPdfUploadQueue([]);
       setNotification({ type: "success", message: "Acolhido atualizado com sucesso." });
       carregarHospedes();
     } catch (error) {
@@ -257,6 +275,67 @@ export default function ListaHospedes() {
       setNotification({ type: "error", message: getFriendlyErrorMessage(error, "Nao foi possivel atualizar o acolhido.") });
     } finally {
       setIsSavingEdit(false);
+    }
+  }
+
+  function formatFileSize(bytes) {
+    if (!Number.isFinite(bytes)) return "";
+    if (bytes < 1024 * 1024) return `${Math.max(1, Math.round(bytes / 1024))} KB`;
+    return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
+  }
+
+  function adicionarPdfEdicao(event) {
+    const selectedFiles = Array.from(event.target.files || []);
+    const acceptedDocuments = [];
+    let hasRejectedFile = false;
+
+    selectedFiles.forEach((file) => {
+      const isPdf = file.type === "application/pdf" || file.name.toLowerCase().endsWith(".pdf");
+      const isWithinLimit = file.size <= 20 * 1024 * 1024;
+
+      if (!isPdf || !isWithinLimit) {
+        hasRejectedFile = true;
+        return;
+      }
+
+      acceptedDocuments.push({
+        id: crypto.randomUUID(),
+        file,
+        name: file.name,
+        size: file.size
+      });
+    });
+
+    if (acceptedDocuments.length > 0) {
+      setPdfUploadQueue((current) => [...current, ...acceptedDocuments]);
+    }
+
+    if (hasRejectedFile) {
+      setNotification({ type: "error", message: "Anexe apenas PDFs de ate 20 MB." });
+    }
+
+    event.target.value = "";
+  }
+
+  function removerPdfFila(documentId) {
+    setPdfUploadQueue((current) => current.filter((documento) => documento.id !== documentId));
+  }
+
+  async function excluirDocumento(documento) {
+    const confirmed = window.confirm(`Excluir o PDF "${documento.nomeOriginal}"?`);
+    if (!confirmed) return;
+
+    try {
+      await fetchComAuth(`/pessoas/${selectedRecord.id}/documentos/${documento.id}`, {
+        method: "DELETE"
+      });
+      setDetails((current) => current ? {
+        ...current,
+        documentos: current.documentos.filter((item) => item.id !== documento.id)
+      } : current);
+      setNotification({ type: "success", message: "PDF excluido com sucesso." });
+    } catch (error) {
+      setNotification({ type: "error", message: getFriendlyErrorMessage(error, "Nao foi possivel excluir o PDF.") });
     }
   }
 
@@ -481,6 +560,49 @@ export default function ListaHospedes() {
                     <input type="checkbox" name="aceitouTermo" checked={editForm.aceitouTermo} onChange={atualizarCampoEdicao} />
                     Usuario ciente do termo
                   </label>
+                  <div className="field field-full">
+                    <span>Documentos complementares em PDF</span>
+                    <label className="pdf-upload-box">
+                      <input type="file" accept="application/pdf,.pdf" multiple onChange={adicionarPdfEdicao} />
+                      <strong>Adicionar PDFs</strong>
+                      <small>Voce pode anexar novos documentos. Limite de 20 MB por arquivo.</small>
+                    </label>
+                    <div className="documents-panel">
+                      <strong>PDFs ja anexados</strong>
+                      {details.documentos.filter((documento) => documento.tipo === "PDF").length === 0 && (
+                        <p>Nenhum PDF anexado.</p>
+                      )}
+                      {details.documentos.filter((documento) => documento.tipo === "PDF").map((documento) => (
+                        <div className="document-row" key={documento.id}>
+                          <span>{documento.nomeOriginal}</span>
+                          <div className="document-actions">
+                            <button type="button" className="ghost-button compact-button" onClick={() => baixarDocumento(documento)}>
+                              Abrir
+                            </button>
+                            <button type="button" className="danger-button compact-button" onClick={() => excluirDocumento(documento)}>
+                              Excluir
+                            </button>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                    {pdfUploadQueue.length > 0 && (
+                      <div className="pdf-document-list">
+                        <strong>PDFs para anexar ao salvar</strong>
+                        {pdfUploadQueue.map((documento) => (
+                          <article key={documento.id} className="pdf-document-item">
+                            <div>
+                              <strong>{documento.name}</strong>
+                              <span>{formatFileSize(documento.size)}</span>
+                            </div>
+                            <button type="button" className="danger-button compact-button" onClick={() => removerPdfFila(documento.id)}>
+                              Remover
+                            </button>
+                          </article>
+                        ))}
+                      </div>
+                    )}
+                  </div>
                 </div>
                 <div className="modal-actions">
                   <button type="button" className="ghost-button" onClick={() => setShowEdit(false)}>Cancelar</button>

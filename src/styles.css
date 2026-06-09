@@ -1057,6 +1057,13 @@ button:focus-visible {
   overflow-wrap: anywhere;
 }
 
+.document-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  justify-content: flex-end;
+}
+
 @media (max-width: 1180px) {
   .app-header,
   .workspace {
