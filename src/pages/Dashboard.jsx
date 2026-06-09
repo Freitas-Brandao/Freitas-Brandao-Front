@@ -1,9 +1,10 @@
 import { useState, useEffect } from "react";
-import { fetchComAuth } from "../utils/api";
+import { fetchComAuth, getFriendlyErrorMessage } from "../utils/api";
 
 export default function Dashboard() {
   const [totalAcolhidos, setTotalAcolhidos] = useState(0);
   const [carregando, setCarregando] = useState(true);
+  const [erro, setErro] = useState("");
 
   useEffect(() => {
     async function carregarDadosVitais() {
@@ -12,6 +13,7 @@ export default function Dashboard() {
         setTotalAcolhidos(dados.totalElements || 0);
       } catch (error) {
         console.error("Erro ao carregar dashboard:", error);
+        setErro(getFriendlyErrorMessage(error, "Nao foi possivel carregar os indicadores."));
       } finally {
         setCarregando(false);
       }
@@ -29,6 +31,8 @@ export default function Dashboard() {
 
       {carregando ? (
         <p className="muted"><span className="spinner"></span> Atualizando indicadores...</p>
+      ) : erro ? (
+        <div className="toast error" style={{ position: "relative", top: 0, right: 0, width: "100%" }}>{erro}</div>
       ) : (
         <div className="review-grid" style={{ marginTop: "24px" }}>
           <article className="review-card" style={{ borderLeft: "4px solid var(--blue)" }}>

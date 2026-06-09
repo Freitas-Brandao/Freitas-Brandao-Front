@@ -1,5 +1,5 @@
 import { useState, useEffect } from "react";
-import { fetchComAuth } from "../utils/api";
+import { fetchComAuth, getFriendlyErrorMessage } from "../utils/api";
 import { formatDateBR } from "../utils/formatters";
 
 const DRAFT_KEY = "freitas-brandao-rascunho";
@@ -226,14 +226,19 @@ export default function CadastroHospede() {
         body: JSON.stringify(payload)
       });
       if (pdfDocuments.length > 0 && pessoaSalva?.id) {
-        await uploadPdfDocuments(pessoaSalva.id);
+        try {
+          await uploadPdfDocuments(pessoaSalva.id);
+        } catch (error) {
+          setNotification({ type: "error", message: `Cadastro salvo, mas houve erro ao anexar PDF: ${getFriendlyErrorMessage(error)}` });
+          return;
+        }
       }
       setNotification({ type: "success", message: "Cadastro concluído com sucesso!" });
       setGuest({ ...emptyGuest });
       setPdfDocuments([]);
       setCurrentSection("inicio");
     } catch (error) {
-      setNotification({ type: "error", message: "Erro ao salvar no servidor corporativo." });
+      setNotification({ type: "error", message: getFriendlyErrorMessage(error, "Erro ao salvar no servidor corporativo.") });
     } finally {
       setIsSubmitting(false);
     }

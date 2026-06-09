@@ -26,11 +26,13 @@ export default function Login() {
       if (resposta.ok) {
         localStorage.setItem("authToken", tokenBase64);
         navigate("/");
+      } else if (resposta.status === 401) {
+        setErro("Usuario ou senha incorretos.");
       } else {
-        setErro("Usuário ou senha incorretos.");
+        setErro("Nao foi possivel validar o acesso. Tente novamente.");
       }
     } catch (error) {
-      setErro("Erro ao conectar com o servidor.");
+      setErro("Servidor indisponivel. Verifique se o backend esta rodando.");
     } finally {
       setCarregando(false);
     }
@@ -64,3 +66,4 @@ export default function Login() {
     </div>
   );
 }
+

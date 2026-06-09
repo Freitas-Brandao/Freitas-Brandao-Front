@@ -1,5 +1,5 @@
 import { useState, useEffect } from "react";
-import { fetchComAuth } from "../utils/api";
+import { fetchComAuth, getFriendlyErrorMessage } from "../utils/api";
 import { formatDateBR } from "../utils/formatters";
 
 export default function ListaHospedes() {
@@ -18,6 +18,7 @@ export default function ListaHospedes() {
       setRecords(dados.content || dados);
     } catch (error) {
       console.error(error);
+      setNotification({ type: "error", message: getFriendlyErrorMessage(error, "Nao foi possivel carregar os acolhidos.") });
     }
   }
 
@@ -48,7 +49,7 @@ export default function ListaHospedes() {
       carregarHospedes();
     } catch (error) {
       console.error(error);
-      setNotification({ type: "error", message: "Nao foi possivel registrar a saida." });
+      setNotification({ type: "error", message: getFriendlyErrorMessage(error, "Nao foi possivel registrar a saida.") });
     }
   }
 
