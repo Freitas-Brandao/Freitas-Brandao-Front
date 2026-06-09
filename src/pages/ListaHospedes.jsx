@@ -53,6 +53,26 @@ export default function ListaHospedes() {
     }
   }
 
+  async function excluirAcolhido(record) {
+    const confirmed = window.confirm(`Excluir o acolhido "${record.nome}"? Esta acao tambem remove documentos, desligamentos e demais registros vinculados.`);
+    if (!confirmed) return;
+
+    try {
+      await fetchComAuth(`/pessoas/${record.id}`, {
+        method: "DELETE"
+      });
+      setNotification({ type: "success", message: "Acolhido excluido com sucesso." });
+      if (selectedRecord?.id === record.id) {
+        setSelectedRecord(null);
+        setShowDischarge(false);
+      }
+      carregarHospedes();
+    } catch (error) {
+      console.error(error);
+      setNotification({ type: "error", message: getFriendlyErrorMessage(error, "Nao foi possivel excluir o acolhido.") });
+    }
+  }
+
   return (
     <div className="search-panel" style={{ marginTop: 0 }}>
       {notification && <div className={`toast ${notification.type}`}>{notification.message}</div>}
@@ -79,6 +99,7 @@ export default function ListaHospedes() {
             </div>
             <div className="record-card-actions">
               <button type="button" className="ghost-button compact-button" onClick={() => setSelectedRecord(r)}>Detalhes</button>
+              <button type="button" className="danger-button compact-button" onClick={() => excluirAcolhido(r)}>Excluir Acolhido</button>
               {!r.ultimaDataSaida && (
                 <button type="button" className="primary-button compact-button" onClick={() => { setSelectedRecord(r); setShowDischarge(true); }}>Registrar Saída</button>
               )}
