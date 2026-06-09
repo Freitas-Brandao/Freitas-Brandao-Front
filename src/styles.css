@@ -1022,6 +1022,27 @@ button:focus-visible {
   vertical-align: top;
 }
 
+.documents-panel {
+  display: grid;
+  gap: 8px;
+  margin-top: 8px;
+}
+
+.document-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 10px;
+  align-items: center;
+  padding: 10px 12px;
+  border: 1px solid rgba(106, 132, 153, 0.22);
+  border-radius: 10px;
+  background: #ffffff;
+}
+
+.document-row span {
+  overflow-wrap: anywhere;
+}
+
 @media (max-width: 1180px) {
   .app-header,
   .workspace {
@@ -1150,27 +1171,33 @@ button:focus-visible {
     padding: 0;
   }
 
-  .sidebar,
-  .search-panel,
-  .modal-backdrop,
-  .actions-bar,
-  .no-print {
+  .printing-ficha .app-header,
+  .printing-ficha .sidebar,
+  .printing-ficha .filters-panel,
+  .printing-ficha .records-list,
+  .printing-ficha .actions-bar,
+  .printing-ficha .no-print {
     display: none;
   }
 
-  .modal-backdrop:has(.ficha-modal) {
+  .printing-ficha .search-panel {
+    display: block;
+    padding: 0;
+    border: 0;
+    border-radius: 0;
+    box-shadow: none;
+    background: #ffffff;
+  }
+
+  .printing-ficha .modal-backdrop {
     position: static;
     display: block;
     padding: 0;
     background: transparent;
   }
 
-  .modal-backdrop:has(.ficha-modal),
-  .modal-backdrop:has(.ficha-modal) .ficha-modal {
+  .printing-ficha .ficha-modal {
     display: block;
-  }
-
-  .ficha-modal {
     width: 100%;
     max-height: none;
     overflow: visible;
@@ -1183,7 +1210,12 @@ button:focus-visible {
     padding: 0;
   }
 
-  .app-header,
+  .document-row {
+    display: block;
+    padding: 6px 0;
+    border: 0;
+  }
+
   .form-panel {
     box-shadow: none;
     border-color: #111111;

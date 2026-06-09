@@ -1,5 +1,5 @@
 import { useState, useEffect } from "react";
-import { fetchComAuth, getFriendlyErrorMessage } from "../utils/api";
+import { API_URL, fetchComAuth, getFriendlyErrorMessage } from "../utils/api";
 import { formatDateBR } from "../utils/formatters";
 
 export default function ListaHospedes() {
@@ -80,15 +80,16 @@ export default function ListaHospedes() {
     setDetails(null);
     setDetailsLoading(true);
     try {
-      const [pessoa, beneficios, referencias, desligamentos, evolucoes, encaminhamentos] = await Promise.all([
+      const [pessoa, beneficios, referencias, desligamentos, evolucoes, encaminhamentos, documentos] = await Promise.all([
         fetchComAuth(`/pessoas/${record.id}`),
         fetchComAuth(`/pessoas/${record.id}/beneficios`).catch(() => null),
         fetchComAuth(`/pessoas/${record.id}/referencias`).catch(() => []),
         fetchComAuth(`/pessoas/${record.id}/desligamentos`).catch(() => []),
         fetchComAuth(`/pessoas/${record.id}/evolucoes`).catch(() => []),
-        fetchComAuth(`/pessoas/${record.id}/encaminhamentos`).catch(() => [])
+        fetchComAuth(`/pessoas/${record.id}/encaminhamentos`).catch(() => []),
+        fetchComAuth(`/pessoas/${record.id}/documentos`).catch(() => [])
       ]);
-      setDetails({ pessoa, beneficios, referencias, desligamentos, evolucoes, encaminhamentos });
+      setDetails({ pessoa, beneficios, referencias, desligamentos, evolucoes, encaminhamentos, documentos });
     } catch (error) {
       console.error(error);
       setNotification({ type: "error", message: getFriendlyErrorMessage(error, "Nao foi possivel carregar os detalhes.") });
@@ -98,7 +99,27 @@ export default function ListaHospedes() {
   }
 
   function imprimirFicha() {
+    document.body.classList.add("printing-ficha");
     window.print();
+    setTimeout(() => document.body.classList.remove("printing-ficha"), 500);
+  }
+
+  async function baixarDocumento(documento) {
+    try {
+      const tokenBase64 = localStorage.getItem("authToken");
+      const resposta = await fetch(`${API_URL}/pessoas/${selectedRecord.id}/documentos/${documento.id}/download`, {
+        headers: tokenBase64 ? { Authorization: `Basic ${tokenBase64}` } : {}
+      });
+
+      if (!resposta.ok) throw new Error("Nao foi possivel abrir o documento.");
+
+      const blob = await resposta.blob();
+      const url = URL.createObjectURL(blob);
+      window.open(url, "_blank", "noopener,noreferrer");
+      setTimeout(() => URL.revokeObjectURL(url), 60000);
+    } catch (error) {
+      setNotification({ type: "error", message: getFriendlyErrorMessage(error, "Nao foi possivel abrir o documento.") });
+    }
   }
 
   return (
@@ -196,6 +217,20 @@ export default function ListaHospedes() {
                       <p><strong>Carteira de Trabalho:</strong> {details.pessoa.carteiraTrabalho || ""}</p>
                       <p><strong>Certidão de Nascimento:</strong> {details.pessoa.certidaoNascimento || ""}</p>
                       <p><strong>Boletim de Ocorrência:</strong> {details.pessoa.boletimOcorrencia || ""}</p>
+                    </div>
+                    <div className="documents-panel">
+                      <strong>Documentos complementares em PDF</strong>
+                      {details.documentos.filter((documento) => documento.tipo === "PDF").length === 0 && (
+                        <p>Nenhum PDF anexado.</p>
+                      )}
+                      {details.documentos.filter((documento) => documento.tipo === "PDF").map((documento) => (
+                        <div className="document-row" key={documento.id}>
+                          <span>{documento.nomeOriginal}</span>
+                          <button type="button" className="ghost-button compact-button no-print" onClick={() => baixarDocumento(documento)}>
+                            Abrir PDF
+                          </button>
+                        </div>
+                      ))}
                     </div>
                   </section>
                   <section className="print-section">
