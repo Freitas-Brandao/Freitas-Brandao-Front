@@ -9,6 +9,7 @@ export default function ListaHospedes() {
   const [showDischarge, setShowDischarge] = useState(false);
   const [dischargeDate, setDischargeDate] = useState("");
   const [dischargeReason, setDischargeReason] = useState("");
+  const [notification, setNotification] = useState(null);
 
   async function carregarHospedes() {
     try {
@@ -41,14 +42,19 @@ export default function ListaHospedes() {
       });
       setShowDischarge(false);
       setSelectedRecord(null);
+      setDischargeDate("");
+      setDischargeReason("");
+      setNotification({ type: "success", message: "Saida registrada com sucesso." });
       carregarHospedes();
     } catch (error) {
       console.error(error);
+      setNotification({ type: "error", message: "Nao foi possivel registrar a saida." });
     }
   }
 
   return (
     <div className="search-panel" style={{ marginTop: 0 }}>
+      {notification && <div className={`toast ${notification.type}`}>{notification.message}</div>}
       <form className="filters-panel hospedes-filters" onSubmit={executarBusca}>
         <label className="filter-field">
           <span>Nome</span>
@@ -68,6 +74,7 @@ export default function ListaHospedes() {
               <strong>{r.nome || "Nome nao informado"}</strong>
               <span>CPF: {r.cpf || "Sem CPF informado"}</span>
               {r.dataAcolhimento && <small>Acolhimento: {formatDateBR(r.dataAcolhimento)}</small>}
+              {r.ultimaDataSaida && <small className="status-badge danger">Desligado em {formatDateBR(r.ultimaDataSaida)}</small>}
             </div>
             <div className="record-card-actions">
               <button type="button" className="ghost-button compact-button" onClick={() => setSelectedRecord(r)}>Detalhes</button>
