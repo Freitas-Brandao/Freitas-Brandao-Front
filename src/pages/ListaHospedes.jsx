@@ -78,7 +78,9 @@ export default function ListaHospedes() {
             </div>
             <div className="record-card-actions">
               <button type="button" className="ghost-button compact-button" onClick={() => setSelectedRecord(r)}>Detalhes</button>
-              <button type="button" className="primary-button compact-button" onClick={() => { setSelectedRecord(r); setShowDischarge(true); }}>Registrar Saída</button>
+              {!r.ultimaDataSaida && (
+                <button type="button" className="primary-button compact-button" onClick={() => { setSelectedRecord(r); setShowDischarge(true); }}>Registrar Saída</button>
+              )}
             </div>
           </article>
         ))}
