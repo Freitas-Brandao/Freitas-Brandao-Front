@@ -10,6 +10,8 @@ export default function ListaHospedes() {
   const [dischargeDate, setDischargeDate] = useState("");
   const [dischargeReason, setDischargeReason] = useState("");
   const [notification, setNotification] = useState(null);
+  const [details, setDetails] = useState(null);
+  const [detailsLoading, setDetailsLoading] = useState(false);
 
   async function carregarHospedes() {
     try {
@@ -73,6 +75,32 @@ export default function ListaHospedes() {
     }
   }
 
+  async function abrirDetalhes(record) {
+    setSelectedRecord(record);
+    setDetails(null);
+    setDetailsLoading(true);
+    try {
+      const [pessoa, beneficios, referencias, desligamentos, evolucoes, encaminhamentos] = await Promise.all([
+        fetchComAuth(`/pessoas/${record.id}`),
+        fetchComAuth(`/pessoas/${record.id}/beneficios`).catch(() => null),
+        fetchComAuth(`/pessoas/${record.id}/referencias`).catch(() => []),
+        fetchComAuth(`/pessoas/${record.id}/desligamentos`).catch(() => []),
+        fetchComAuth(`/pessoas/${record.id}/evolucoes`).catch(() => []),
+        fetchComAuth(`/pessoas/${record.id}/encaminhamentos`).catch(() => [])
+      ]);
+      setDetails({ pessoa, beneficios, referencias, desligamentos, evolucoes, encaminhamentos });
+    } catch (error) {
+      console.error(error);
+      setNotification({ type: "error", message: getFriendlyErrorMessage(error, "Nao foi possivel carregar os detalhes.") });
+    } finally {
+      setDetailsLoading(false);
+    }
+  }
+
+  function imprimirFicha() {
+    window.print();
+  }
+
   return (
     <div className="search-panel" style={{ marginTop: 0 }}>
       {notification && <div className={`toast ${notification.type}`}>{notification.message}</div>}
@@ -98,7 +126,7 @@ export default function ListaHospedes() {
               {r.ultimaDataSaida && <small className="status-badge danger">Desligado em {formatDateBR(r.ultimaDataSaida)}</small>}
             </div>
             <div className="record-card-actions">
-              <button type="button" className="ghost-button compact-button" onClick={() => setSelectedRecord(r)}>Detalhes</button>
+              <button type="button" className="ghost-button compact-button" onClick={() => abrirDetalhes(r)}>Detalhes</button>
               <button type="button" className="danger-button compact-button" onClick={() => excluirAcolhido(r)}>Excluir Acolhido</button>
               {!r.ultimaDataSaida && (
                 <button type="button" className="primary-button compact-button" onClick={() => { setSelectedRecord(r); setShowDischarge(true); }}>Registrar Saída</button>
@@ -110,15 +138,94 @@ export default function ListaHospedes() {
 
       {selectedRecord && !showDischarge && (
         <div className="modal-backdrop">
-          <div className="modal-container">
-            <h2 className="modal-title">{selectedRecord.nome}</h2>
-            <div className="detail-list">
-              <p><strong>CPF:</strong> {selectedRecord.cpf}</p>
-              <p><strong>Data de Acolhimento:</strong> {formatDateBR(selectedRecord.dataAcolhimento)}</p>
-              <p><strong>Condições de Saúde:</strong> {selectedRecord.condicoesSaude || "Nenhuma"}</p>
+          <div className="modal-panel ficha-modal">
+            <div className="modal-header no-print">
+              <div>
+                <span>Ficha de acolhimento</span>
+                <h2>{selectedRecord.nome}</h2>
+                <p>CPF: {selectedRecord.cpf || "Sem CPF informado"}</p>
+              </div>
+              <div className="modal-header-actions">
+                <button type="button" className="ghost-button" onClick={imprimirFicha}>Imprimir ficha</button>
+                <button type="button" className="ghost-button" onClick={() => setSelectedRecord(null)}>Fechar</button>
+              </div>
             </div>
-            <div className="modal-actions" style={{ marginTop: "20px" }}>
-              <button type="button" className="ghost-button" onClick={() => setSelectedRecord(null)}>Fechar</button>
+            <div className="print-sheet">
+              {detailsLoading && <p className="muted no-print">Carregando ficha...</p>}
+              {!detailsLoading && details && (
+                <>
+                  <header className="print-header">
+                    <strong>PREFEITURA MUNICIPAL DE ARACAJU</strong>
+                    <strong>SECRETARIA MUNICIPAL DA FAMÍLIA E DA ASSISTÊNCIA SOCIAL</strong>
+                    <strong>CASA DE PASSAGEM MUNICIPAL FREITAS BRANDÃO</strong>
+                    <h2>FICHA DE ACOLHIMENTO - ADULTO</h2>
+                  </header>
+                  <section className="print-section">
+                    <h3>1. INFORMAÇÕES INICIAIS</h3>
+                    <div className="print-grid">
+                      <p><strong>Data de Acolhimento:</strong> {formatDateBR(details.pessoa.dataAcolhimento)}</p>
+                      <p><strong>Retorno 1:</strong> {formatDateBR(details.pessoa.dataRetorno1)}</p>
+                      <p><strong>Retorno 2:</strong> {formatDateBR(details.pessoa.dataRetorno2)}</p>
+                      <p><strong>Retorno 3:</strong> {formatDateBR(details.pessoa.dataRetorno3)}</p>
+                    </div>
+                    <p><strong>Instituição de Encaminhamento:</strong> {details.pessoa.instituicaoEncaminhamento || ""}</p>
+                    <p><strong>Demanda Espontânea:</strong> {details.pessoa.demandaEspontanea ? "Sim" : "Não"}</p>
+                  </section>
+                  <section className="print-section">
+                    <h3>2. DADOS PESSOAIS</h3>
+                    <div className="print-grid">
+                      <p><strong>Nome:</strong> {details.pessoa.nome}</p>
+                      <p><strong>Data de Nascimento:</strong> {formatDateBR(details.pessoa.dataNascimento)}</p>
+                      <p><strong>Idade:</strong> {details.pessoa.idade || ""}</p>
+                      <p><strong>Escolaridade:</strong> {details.pessoa.escolaridade || ""}</p>
+                      <p><strong>Nacionalidade:</strong> {details.pessoa.nacionalidade || ""}</p>
+                      <p><strong>Naturalidade:</strong> {details.pessoa.naturalidade || ""}</p>
+                      <p><strong>Estado Civil:</strong> {details.pessoa.estadoCivil || ""}</p>
+                      <p><strong>Filhos:</strong> {details.pessoa.filhos || ""}</p>
+                      <p><strong>Mãe:</strong> {details.pessoa.mae || ""}</p>
+                      <p><strong>Pai:</strong> {details.pessoa.pai || ""}</p>
+                    </div>
+                    <p><strong>Referências sociofamiliares:</strong> {details.pessoa.referenciasSociofamiliares || ""}</p>
+                  </section>
+                  <section className="print-section">
+                    <h3>3. DOCUMENTAÇÃO</h3>
+                    <div className="print-grid">
+                      <p><strong>RG:</strong> {details.pessoa.rg || ""}</p>
+                      <p><strong>CPF:</strong> {details.pessoa.cpf || ""}</p>
+                      <p><strong>Título Eleitoral:</strong> {details.pessoa.tituloEleitoral || ""}</p>
+                      <p><strong>Carteira de Trabalho:</strong> {details.pessoa.carteiraTrabalho || ""}</p>
+                      <p><strong>Certidão de Nascimento:</strong> {details.pessoa.certidaoNascimento || ""}</p>
+                      <p><strong>Boletim de Ocorrência:</strong> {details.pessoa.boletimOcorrencia || ""}</p>
+                    </div>
+                  </section>
+                  <section className="print-section">
+                    <h3>4. BENEFÍCIOS E SAÚDE</h3>
+                    <p><strong>Bolsa Família:</strong> {details.beneficios?.bolsaFamilia ? "Sim" : "Não"} | <strong>BPC:</strong> {details.beneficios?.bpc ? "Sim" : "Não"} | <strong>CadÚnico:</strong> {details.pessoa.cadUnico ? "Sim" : "Não"}</p>
+                    <p><strong>NIS:</strong> {details.pessoa.numeroNis || ""}</p>
+                    <p><strong>Condições de Saúde:</strong> {details.pessoa.condicoesSaude || ""}</p>
+                    <p><strong>Alergias:</strong> {details.pessoa.alergiasRestricoes || ""}</p>
+                    <p><strong>Outras alergias/restrições:</strong> {details.pessoa.outrasAlergias || ""}</p>
+                    <p><strong>Medicação:</strong> {details.pessoa.medicamentosEmUso || ""}</p>
+                    <p><strong>Cartão SUS:</strong> {details.pessoa.cartaoSus || ""}</p>
+                  </section>
+                  <section className="print-section">
+                    <h3>5. EVOLUÇÃO</h3>
+                    <table><tbody>{details.evolucoes.map((item) => <tr key={item.id}><td>{formatDateBR(item.data)}</td><td>{item.descricao}</td><td>{item.responsavel}</td></tr>)}</tbody></table>
+                  </section>
+                  <section className="print-section">
+                    <h3>6. ENCAMINHAMENTOS REALIZADOS DURANTE ACOLHIMENTO</h3>
+                    <table><tbody>{details.encaminhamentos.map((item) => <tr key={item.id}><td>{formatDateBR(item.data)}</td><td>{item.destino}</td><td>{item.descricao}</td></tr>)}</tbody></table>
+                  </section>
+                  <section className="print-section">
+                    <h3>7. TERMO DE DESLIGAMENTO</h3>
+                    <table><tbody>{details.desligamentos.map((item) => <tr key={item.id}><td>{formatDateBR(item.data)}</td><td>{item.motivo}</td><td>{item.tecnicoResponsavel}</td></tr>)}</tbody></table>
+                  </section>
+                  <section className="print-section">
+                    <h3>8. TERMO DE ORIENTAÇÃO</h3>
+                    <p>{details.pessoa.aceitouTermo ? "Usuário(a) ciente das normas e regulamentos do abrigo." : "Termo ainda não aceito."}</p>
+                  </section>
+                </>
+              )}
             </div>
           </div>
         </div>

@@ -629,6 +629,21 @@ select:focus {
   gap: 14px;
 }
 
+.compact-dates {
+  gap: 10px;
+}
+
+.return-date-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 12px;
+  align-items: end;
+}
+
+.inline-action {
+  width: fit-content;
+}
+
 .list-card {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
@@ -947,6 +962,66 @@ button:focus-visible {
   margin-bottom: 0;
 }
 
+.ficha-modal {
+  width: min(980px, 100%);
+}
+
+.print-sheet {
+  display: grid;
+  gap: 18px;
+  padding: 28px;
+  color: #111111;
+  background: #ffffff;
+}
+
+.print-header {
+  display: grid;
+  gap: 3px;
+  justify-items: center;
+  text-align: center;
+}
+
+.print-header h2 {
+  margin: 16px 0 0;
+  font-size: 1.05rem;
+}
+
+.print-section {
+  display: grid;
+  gap: 8px;
+  break-inside: avoid;
+}
+
+.print-section h3 {
+  margin: 6px 0 2px;
+  font-size: 0.96rem;
+}
+
+.print-section p {
+  margin: 0;
+  overflow-wrap: anywhere;
+}
+
+.print-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px 18px;
+}
+
+.print-section table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.92rem;
+}
+
+.print-section td,
+.print-section th {
+  min-height: 28px;
+  padding: 7px 8px;
+  border: 1px solid #111111;
+  vertical-align: top;
+}
+
 @media (max-width: 1180px) {
   .app-header,
   .workspace {
@@ -1078,8 +1153,34 @@ button:focus-visible {
   .sidebar,
   .search-panel,
   .modal-backdrop,
-  .actions-bar {
+  .actions-bar,
+  .no-print {
     display: none;
+  }
+
+  .modal-backdrop:has(.ficha-modal) {
+    position: static;
+    display: block;
+    padding: 0;
+    background: transparent;
+  }
+
+  .modal-backdrop:has(.ficha-modal),
+  .modal-backdrop:has(.ficha-modal) .ficha-modal {
+    display: block;
+  }
+
+  .ficha-modal {
+    width: 100%;
+    max-height: none;
+    overflow: visible;
+    border: 0;
+    border-radius: 0;
+    box-shadow: none;
+  }
+
+  .print-sheet {
+    padding: 0;
   }
 
   .app-header,
