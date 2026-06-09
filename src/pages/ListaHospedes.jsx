@@ -12,6 +12,112 @@ export default function ListaHospedes() {
   const [notification, setNotification] = useState(null);
   const [details, setDetails] = useState(null);
   const [detailsLoading, setDetailsLoading] = useState(false);
+  const [showEdit, setShowEdit] = useState(false);
+  const [editForm, setEditForm] = useState(null);
+  const [isSavingEdit, setIsSavingEdit] = useState(false);
+
+  function cleanCPF(value) {
+    return String(value || "").replace(/\D/g, "");
+  }
+
+  function valueOrNull(value) {
+    const cleanValue = String(value || "").trim();
+    return cleanValue ? cleanValue : null;
+  }
+
+  function pessoaToEditForm(pessoa) {
+    return {
+      dataAcolhimento: pessoa.dataAcolhimento || "",
+      dataRetorno1: pessoa.dataRetorno1 || "",
+      dataRetorno2: pessoa.dataRetorno2 || "",
+      dataRetorno3: pessoa.dataRetorno3 || "",
+      demandaEspontanea: Boolean(pessoa.demandaEspontanea),
+      instituicaoEncaminhamento: pessoa.instituicaoEncaminhamento || "",
+      nome: pessoa.nome || "",
+      nomeSocial: pessoa.nomeSocial || "",
+      dataNascimento: pessoa.dataNascimento || "",
+      escolaridade: pessoa.escolaridade || "",
+      nacionalidade: pessoa.nacionalidade || "",
+      naturalidade: pessoa.naturalidade || "",
+      estadoCivil: pessoa.estadoCivil || "",
+      filhos: pessoa.filhos || "",
+      mae: pessoa.mae || "",
+      pai: pessoa.pai || "",
+      referenciasSociofamiliares: pessoa.referenciasSociofamiliares || "",
+      genero: pessoa.genero || "OUTRO",
+      telefone: pessoa.telefone || "",
+      cpf: pessoa.cpf || "",
+      rg: pessoa.rg || "",
+      tituloEleitoral: pessoa.tituloEleitoral || "",
+      carteiraTrabalho: pessoa.carteiraTrabalho || "",
+      certidaoNascimento: pessoa.certidaoNascimento || "",
+      boletimOcorrencia: pessoa.boletimOcorrencia || "",
+      numeroNis: pessoa.numeroNis || "",
+      cadUnico: Boolean(pessoa.cadUnico),
+      cartaoSus: pessoa.cartaoSus || "",
+      condicoesSaude: pessoa.condicoesSaude || "",
+      medicamentosEmUso: pessoa.medicamentosEmUso || "",
+      alergiasRestricoes: pessoa.alergiasRestricoes || "",
+      outrasAlergias: pessoa.outrasAlergias || "",
+      usaSubstanciasPsicoativas: Boolean(pessoa.usaSubstanciasPsicoativas),
+      substanciasQuais: pessoa.substanciasQuais || "",
+      atividadesRealizadas: pessoa.atividadesRealizadas || "",
+      oficinasParticipadas: pessoa.oficinasParticipadas || "",
+      observacoes: pessoa.observacoes || "",
+      aceitouTermo: Boolean(pessoa.aceitouTermo),
+      dataAssinaturaTermo: pessoa.dataAssinaturaTermo || "",
+      ultimaDataEntrada: pessoa.ultimaDataEntrada || pessoa.dataAcolhimento || "",
+      ultimaDataSaida: pessoa.ultimaDataSaida || ""
+    };
+  }
+
+  function editFormToPayload(form) {
+    return {
+      dataAcolhimento: form.dataAcolhimento || null,
+      horaAcolhimento: null,
+      dataRetorno1: form.dataRetorno1 || null,
+      dataRetorno2: form.dataRetorno2 || null,
+      dataRetorno3: form.dataRetorno3 || null,
+      instituicaoEncaminhamento: valueOrNull(form.instituicaoEncaminhamento),
+      demandaEspontanea: Boolean(form.demandaEspontanea),
+      nome: String(form.nome || "").trim(),
+      nomeSocial: valueOrNull(form.nomeSocial),
+      dataNascimento: form.dataNascimento || null,
+      escolaridade: valueOrNull(form.escolaridade),
+      nacionalidade: valueOrNull(form.nacionalidade),
+      naturalidade: valueOrNull(form.naturalidade),
+      estadoCivil: valueOrNull(form.estadoCivil),
+      filhos: valueOrNull(form.filhos),
+      mae: valueOrNull(form.mae),
+      pai: valueOrNull(form.pai),
+      referenciasSociofamiliares: valueOrNull(form.referenciasSociofamiliares),
+      genero: form.genero || "OUTRO",
+      telefone: valueOrNull(form.telefone),
+      cpf: form.cpf ? cleanCPF(form.cpf) : null,
+      rg: valueOrNull(form.rg),
+      orgaoExpedidorRg: null,
+      tituloEleitoral: valueOrNull(form.tituloEleitoral),
+      carteiraTrabalho: valueOrNull(form.carteiraTrabalho),
+      certidaoNascimento: valueOrNull(form.certidaoNascimento),
+      boletimOcorrencia: valueOrNull(form.boletimOcorrencia),
+      numeroNis: valueOrNull(form.numeroNis),
+      cadUnico: Boolean(form.cadUnico),
+      cartaoSus: valueOrNull(form.cartaoSus),
+      condicoesSaude: valueOrNull(form.condicoesSaude),
+      medicamentosEmUso: valueOrNull(form.medicamentosEmUso),
+      alergiasRestricoes: valueOrNull(form.alergiasRestricoes),
+      outrasAlergias: valueOrNull(form.outrasAlergias),
+      usaSubstanciasPsicoativas: Boolean(form.usaSubstanciasPsicoativas),
+      substanciasQuais: valueOrNull(form.substanciasQuais),
+      atividadesRealizadas: valueOrNull(form.atividadesRealizadas),
+      oficinasParticipadas: valueOrNull(form.oficinasParticipadas),
+      observacoes: valueOrNull(form.observacoes),
+      aceitouTermo: Boolean(form.aceitouTermo),
+      dataAssinaturaTermo: form.dataAssinaturaTermo || null,
+      ultimaDataEntrada: form.ultimaDataEntrada || null,
+      ultimaDataSaida: form.ultimaDataSaida || null
+    };
+  }
 
   async function carregarHospedes() {
     try {
@@ -78,6 +184,8 @@ export default function ListaHospedes() {
   async function abrirDetalhes(record) {
     setSelectedRecord(record);
     setDetails(null);
+    setShowEdit(false);
+    setEditForm(null);
     setDetailsLoading(true);
     try {
       const [pessoa, beneficios, referencias, desligamentos, evolucoes, encaminhamentos, documentos] = await Promise.all([
@@ -102,6 +210,54 @@ export default function ListaHospedes() {
     document.body.classList.add("printing-ficha");
     window.print();
     setTimeout(() => document.body.classList.remove("printing-ficha"), 500);
+  }
+
+  function abrirEdicao() {
+    if (!details?.pessoa) return;
+    setEditForm(pessoaToEditForm(details.pessoa));
+    setShowEdit(true);
+  }
+
+  function atualizarCampoEdicao(event) {
+    const { name, value, type, checked } = event.target;
+    setEditForm((current) => ({
+      ...current,
+      [name]: type === "checkbox" ? checked : value
+    }));
+  }
+
+  async function salvarEdicao(event) {
+    event.preventDefault();
+    if (!selectedRecord?.id || !editForm || isSavingEdit) return;
+
+    if (!String(editForm.nome || "").trim()) {
+      setNotification({ type: "error", message: "Nome completo e obrigatorio." });
+      return;
+    }
+
+    setIsSavingEdit(true);
+    try {
+      const pessoaAtualizada = await fetchComAuth(`/pessoas/${selectedRecord.id}`, {
+        method: "PUT",
+        body: JSON.stringify(editFormToPayload(editForm))
+      });
+      setDetails((current) => current ? { ...current, pessoa: pessoaAtualizada } : current);
+      setSelectedRecord((current) => current ? {
+        ...current,
+        nome: pessoaAtualizada.nome,
+        cpf: pessoaAtualizada.cpf,
+        dataAcolhimento: pessoaAtualizada.dataAcolhimento,
+        ultimaDataSaida: pessoaAtualizada.ultimaDataSaida
+      } : current);
+      setShowEdit(false);
+      setNotification({ type: "success", message: "Acolhido atualizado com sucesso." });
+      carregarHospedes();
+    } catch (error) {
+      console.error(error);
+      setNotification({ type: "error", message: getFriendlyErrorMessage(error, "Nao foi possivel atualizar o acolhido.") });
+    } finally {
+      setIsSavingEdit(false);
+    }
   }
 
   async function baixarDocumento(documento) {
@@ -167,10 +323,171 @@ export default function ListaHospedes() {
                 <p>CPF: {selectedRecord.cpf || "Sem CPF informado"}</p>
               </div>
               <div className="modal-header-actions">
+                {!showEdit && <button type="button" className="ghost-button" onClick={abrirEdicao} disabled={!details?.pessoa}>Editar Acolhido</button>}
                 <button type="button" className="ghost-button" onClick={imprimirFicha}>Imprimir ficha</button>
                 <button type="button" className="ghost-button" onClick={() => setSelectedRecord(null)}>Fechar</button>
               </div>
             </div>
+            {showEdit && editForm && (
+              <form className="edit-panel no-print" onSubmit={salvarEdicao}>
+                <div className="section-title compact">
+                  <strong>Editar acolhido</strong>
+                </div>
+                <div className="form-grid">
+                  <label className="field">
+                    <span>Data de Acolhimento *</span>
+                    <input type="date" name="dataAcolhimento" value={editForm.dataAcolhimento} onChange={atualizarCampoEdicao} required />
+                  </label>
+                  <label className="field">
+                    <span>Demanda Espontanea</span>
+                    <select name="demandaEspontanea" value={editForm.demandaEspontanea ? "sim" : "nao"} onChange={(event) => setEditForm((current) => ({ ...current, demandaEspontanea: event.target.value === "sim" }))}>
+                      <option value="sim">Sim</option>
+                      <option value="nao">Nao</option>
+                    </select>
+                  </label>
+                  <label className="field">
+                    <span>Data de Retorno 1</span>
+                    <input type="date" name="dataRetorno1" value={editForm.dataRetorno1} onChange={atualizarCampoEdicao} />
+                  </label>
+                  <label className="field">
+                    <span>Data de Retorno 2</span>
+                    <input type="date" name="dataRetorno2" value={editForm.dataRetorno2} onChange={atualizarCampoEdicao} />
+                  </label>
+                  <label className="field">
+                    <span>Data de Retorno 3</span>
+                    <input type="date" name="dataRetorno3" value={editForm.dataRetorno3} onChange={atualizarCampoEdicao} />
+                  </label>
+                  <label className="field">
+                    <span>Instituicao de Encaminhamento</span>
+                    <input name="instituicaoEncaminhamento" value={editForm.instituicaoEncaminhamento} onChange={atualizarCampoEdicao} />
+                  </label>
+                  <label className="field field-full">
+                    <span>Nome Completo *</span>
+                    <input name="nome" value={editForm.nome} onChange={atualizarCampoEdicao} required />
+                  </label>
+                  <label className="field">
+                    <span>Nome Social</span>
+                    <input name="nomeSocial" value={editForm.nomeSocial} onChange={atualizarCampoEdicao} />
+                  </label>
+                  <label className="field">
+                    <span>Data de Nascimento</span>
+                    <input type="date" name="dataNascimento" value={editForm.dataNascimento} onChange={atualizarCampoEdicao} />
+                  </label>
+                  <label className="field">
+                    <span>Escolaridade</span>
+                    <input name="escolaridade" value={editForm.escolaridade} onChange={atualizarCampoEdicao} />
+                  </label>
+                  <label className="field">
+                    <span>Nacionalidade</span>
+                    <input name="nacionalidade" value={editForm.nacionalidade} onChange={atualizarCampoEdicao} />
+                  </label>
+                  <label className="field">
+                    <span>Naturalidade</span>
+                    <input name="naturalidade" value={editForm.naturalidade} onChange={atualizarCampoEdicao} />
+                  </label>
+                  <label className="field">
+                    <span>Estado Civil</span>
+                    <input name="estadoCivil" value={editForm.estadoCivil} onChange={atualizarCampoEdicao} />
+                  </label>
+                  <label className="field">
+                    <span>Filhos</span>
+                    <input name="filhos" value={editForm.filhos} onChange={atualizarCampoEdicao} />
+                  </label>
+                  <label className="field">
+                    <span>Telefone</span>
+                    <input name="telefone" value={editForm.telefone} onChange={atualizarCampoEdicao} />
+                  </label>
+                  <label className="field">
+                    <span>CPF</span>
+                    <input name="cpf" value={editForm.cpf} onChange={atualizarCampoEdicao} />
+                  </label>
+                  <label className="field">
+                    <span>RG</span>
+                    <input name="rg" value={editForm.rg} onChange={atualizarCampoEdicao} />
+                  </label>
+                  <label className="field">
+                    <span>Titulo Eleitoral</span>
+                    <input name="tituloEleitoral" value={editForm.tituloEleitoral} onChange={atualizarCampoEdicao} />
+                  </label>
+                  <label className="field">
+                    <span>Carteira de Trabalho</span>
+                    <input name="carteiraTrabalho" value={editForm.carteiraTrabalho} onChange={atualizarCampoEdicao} />
+                  </label>
+                  <label className="field">
+                    <span>Certidao de Nascimento</span>
+                    <input name="certidaoNascimento" value={editForm.certidaoNascimento} onChange={atualizarCampoEdicao} />
+                  </label>
+                  <label className="field">
+                    <span>Boletim de Ocorrencia</span>
+                    <input name="boletimOcorrencia" value={editForm.boletimOcorrencia} onChange={atualizarCampoEdicao} />
+                  </label>
+                  <label className="field">
+                    <span>NIS</span>
+                    <input name="numeroNis" value={editForm.numeroNis} onChange={atualizarCampoEdicao} />
+                  </label>
+                  <label className="acceptance">
+                    <input type="checkbox" name="cadUnico" checked={editForm.cadUnico} onChange={atualizarCampoEdicao} />
+                    CadUnico
+                  </label>
+                  <label className="field">
+                    <span>Cartao SUS</span>
+                    <input name="cartaoSus" value={editForm.cartaoSus} onChange={atualizarCampoEdicao} />
+                  </label>
+                  <label className="field">
+                    <span>Mae</span>
+                    <input name="mae" value={editForm.mae} onChange={atualizarCampoEdicao} />
+                  </label>
+                  <label className="field">
+                    <span>Pai</span>
+                    <input name="pai" value={editForm.pai} onChange={atualizarCampoEdicao} />
+                  </label>
+                  <label className="field field-full">
+                    <span>Referencias sociofamiliares</span>
+                    <textarea name="referenciasSociofamiliares" rows="3" value={editForm.referenciasSociofamiliares} onChange={atualizarCampoEdicao} />
+                  </label>
+                  <label className="field field-full">
+                    <span>Condicoes de Saude</span>
+                    <textarea name="condicoesSaude" rows="3" value={editForm.condicoesSaude} onChange={atualizarCampoEdicao} />
+                  </label>
+                  <label className="field">
+                    <span>Medicamentos em Uso</span>
+                    <input name="medicamentosEmUso" value={editForm.medicamentosEmUso} onChange={atualizarCampoEdicao} />
+                  </label>
+                  <label className="field">
+                    <span>Alergias/Restricoes</span>
+                    <input name="alergiasRestricoes" value={editForm.alergiasRestricoes} onChange={atualizarCampoEdicao} />
+                  </label>
+                  <label className="field">
+                    <span>Outras alergias</span>
+                    <input name="outrasAlergias" value={editForm.outrasAlergias} onChange={atualizarCampoEdicao} />
+                  </label>
+                  <label className="acceptance">
+                    <input type="checkbox" name="usaSubstanciasPsicoativas" checked={editForm.usaSubstanciasPsicoativas} onChange={atualizarCampoEdicao} />
+                    Usa SPA
+                  </label>
+                  <label className="field field-full">
+                    <span>Substancias quais</span>
+                    <input name="substanciasQuais" value={editForm.substanciasQuais} onChange={atualizarCampoEdicao} />
+                  </label>
+                  <label className="field field-full">
+                    <span>Atividades realizadas</span>
+                    <textarea name="atividadesRealizadas" rows="2" value={editForm.atividadesRealizadas} onChange={atualizarCampoEdicao} />
+                  </label>
+                  <label className="field field-full">
+                    <span>Observacoes</span>
+                    <textarea name="observacoes" rows="3" value={editForm.observacoes} onChange={atualizarCampoEdicao} />
+                  </label>
+                  <label className="acceptance field-full">
+                    <input type="checkbox" name="aceitouTermo" checked={editForm.aceitouTermo} onChange={atualizarCampoEdicao} />
+                    Usuario ciente do termo
+                  </label>
+                </div>
+                <div className="modal-actions">
+                  <button type="button" className="ghost-button" onClick={() => setShowEdit(false)}>Cancelar</button>
+                  <button type="submit" className="primary-button" disabled={isSavingEdit}>{isSavingEdit ? "Salvando..." : "Salvar alteracoes"}</button>
+                </div>
+              </form>
+            )}
             <div className="print-sheet">
               {detailsLoading && <p className="muted no-print">Carregando ficha...</p>}
               {!detailsLoading && details && (
